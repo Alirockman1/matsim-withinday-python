@@ -288,10 +288,11 @@
 		<param name="travelTimeBinSize" value="900" /> 
 	</module>
 
-    <module name="agentModeChoice">
-        <param name="modelFileName" value="modeChoiceModel.xml" />
+    <module name="withinday">
+        <param name="externalModelFileName" value="modeChoiceModel.xml" />
         <param name="allowAllAgents" value="false" />
         <param name="agentFilterList" value="10047_1" />
+		<param name="samplingPercentage" value="0.20" />
         <param name="modes" value="car,pt,bike,pedestrian" />
         <param name="tourBasedModes" value="car,bike" />
     </module>

@@ -73,7 +73,7 @@ public class IterationEndReporting {
         try (FileWriter fw = new FileWriter(csvFile, true)) {
             // Write standard headers if the file is fresh/new
             if (csvFile.length() == 0) {
-                fw.write("iteration,agent_id,experienced_modes,trip_rewards,trip_scores,step_delta_qs,total_day_reward,total_day_kainagel_score,accumulated_delta_q\n");
+                fw.write("iteration,agent_id,experienced_modes,trip_scores,total_day_kainagel_score\n");
             }
 
             // Append data row

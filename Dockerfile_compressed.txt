@@ -22,6 +22,7 @@ RUN wget https://download.oracle.com/java/25/latest/jdk-25_linux-x64_bin.tar.gz 
     rm jdk-25_linux-x64_bin.tar.gz
 
 ENV JAVA_HOME=/opt/jdk-25
+ENV PYTHONPATH="/app/src/main/python:/app/src/projects"
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Copy the source code into the container
@@ -46,5 +47,5 @@ VOLUME ["/app/scenarios/sioux-falls/input/", "/app/scenarios/sioux-falls/output/
 WORKDIR /app
 
 # End point
-ENTRYPOINT ["python3"]
-CMD ["/app/src/main/python/withinday/core/matsim.py"]
+ENTRYPOINT ["sh", "-c"]
+CMD ["python3 $RUN_SCRIPT"]

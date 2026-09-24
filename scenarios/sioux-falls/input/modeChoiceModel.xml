@@ -7,7 +7,6 @@
         <param name="autoEncoderModel" value="matsim_binary_encoder_dim15.onnx" />
         <param name="saveInterval" value="10" /> 
         <param name="trainingCutoffIteration" value="800" /> 
-        <param name="samplingPercentage" value="0.20" />
         <param name="alpha" value="0.1" />
         <param name="gamma" value="0.9" />
         <param name="epsilon" value="0.9" />

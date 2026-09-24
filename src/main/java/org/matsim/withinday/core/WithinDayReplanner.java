@@ -2,7 +2,7 @@ package org.matsim.withinday.core;
 
 import com.google.gson.Gson;
 
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.population.Activity;
+import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
@@ -20,12 +21,17 @@ import org.matsim.core.mobsim.qsim.agents.WithinDayAgentUtils;
 import org.matsim.core.router.TripRouter;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.router.TripStructureUtils.Trip;
+import org.matsim.core.utils.timing.TimeInterpretation;
+import org.matsim.withinday.environment.AgentAssetInventory;
 import org.matsim.withinday.environment.StateEngine;
 import org.matsim.withinday.environment.WithinDayObserver;
+import org.matsim.withinday.environment.WithinDayRealTimeScoringEngine;
 import org.matsim.withinday.networking.CommunicationManager;
 import org.matsim.withinday.utils.EditTrips;
+import org.matsim.withinday.utils.IterationEndReporting;
 import org.matsim.withinday.utils.WithinDayAgentExperience;
-import org.matsim.core.utils.timing.TimeInterpretation;
+import org.matsim.withinday.utils.WithinDayConfigGroup;
+
 
 /**
  * Generic base class for all within-day replanning strategies.
@@ -41,8 +47,9 @@ public abstract class WithinDayReplanner {
     protected final WithinDayObserver customObserver;
     protected final CommunicationManager communicationManager;
     protected final Gson gson = new Gson();
+    protected final Map<Id<Person>, WithinDayAgentExperience> agentExperiences = new HashMap<>();
 
-    private EditTrips editTrips;
+    protected EditTrips editTrips;
 
     /**
      * Constructor for WithinDayReplanner.
@@ -60,12 +67,33 @@ public abstract class WithinDayReplanner {
         this.timeInterpretation = timeInterpretation;
         this.customObserver = customObserver;
         this.communicationManager = pythonCommunicationManager;
+
+        AgentAssetInventory.setSimulationBasedModes(scenario);
+        StateEngine.setNetworkCentroid(scenario.getNetwork());
     }
 
     /**
      * Method to initialize model configurations or remote endpoint sessions during startup.
      */
-    public abstract void initializeModel();
+    public abstract void initializeExternalModel();
+
+    /**
+     * The decision to make once the within day objective is reached. Can be extended for route choice or mode choice.
+     *
+     * @param agent  
+     * @param nextTrip
+     * @param agentDemographics
+     * @param stateObservations
+     * @return  The sanitized, trimmed transport mode string returned by the model or the default fallback.
+     */
+    protected abstract Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation);
+
+    /**
+     * Optional accessor for agent experience tracking metrics.
+     *
+     * @return Map mapping Person IDs to experience records, or null if tracking is disabled.
+     */
+    public abstract Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences();
 
     /**
      * Executes the complete within-day mode replanning workflow for a given agent:
@@ -99,46 +127,22 @@ public abstract class WithinDayReplanner {
         Trip unmodifiedNextTrip = EditTrips.findTripAtPlanElementIndex(agent, currentPlanElementIndex + 1);
         Trip nextTripLeg = TripStructureUtils.findTripStartingAtActivity(currentActivity, modifiablePlan);
 
-        if (nextTripLeg == null || unmodifiedNextTrip == null) {
-            log.debug("Skipping within-day replanning for agent {}: No upcoming trip found.", agent.getId());
-            return;
-        }
+        if (nextTripLeg == null || unmodifiedNextTrip == null) return;
 
         // Observe environmental state and demographics
         Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
-        String agentId = demographics.get("agentId").toString();
-        
-        log.info("Replanning next trip for agent {} at activity end time {}", agentId, agent.getActivityEndTime());
-        
         Map<String, Object> state = this.customObserver.observeState(agent, sim, nextTripLeg, simulationTime, false);
-        state.put("simulationIteration", StateEngine.currentIteration);
+        
+        log.info("Replanning next trip for agent {} at activity end time {}", demographics.get("agentId").toString(), agent.getActivityEndTime());
 
-        if (demographics != null) {
-            state.put("subpopulation", demographics.getOrDefault("subpopulation", "default"));
-        }
+        Map<String, Object> action = determineAction(agent, unmodifiedNextTrip, demographics, state);
+        String chosenMode = (String) action.get("mode");
 
-        // 4. Request decision from serving model via HTTP POST
-        log.info("COMMUNICATION NET: Transmitting environment state for agent {}", agentId);
-        String jsonState = gson.toJson(state);
-        String chosenMode = this.communicationManager.httpPost(jsonState, getDecisionEndpoint(), 360);
-
-        // Fallback safety handling
-        if (chosenMode == null || chosenMode.trim().isEmpty()) {
-            log.error("COMMUNICATION NET: Null/empty response received. Fallback mode 'pedestrian' assigned to agent {}", agentId);
-            chosenMode = "pedestrian";
-        } else {
-            chosenMode = chosenMode.trim();
-        }
-
-        log.info("RL MODE CHOICE: Assigned mode '{}' to agent {}", chosenMode.toUpperCase(), agentId);
-
-        // 5. Update agent's executed plan in memory
-        List<? extends PlanElement> newNextTrip = editTrips.replanFutureTrip(unmodifiedNextTrip, modifiablePlan, 
-            chosenMode, agent.getActivityEndTime());
-
-        // 6. Spawn vehicle in QSim network if the selected mode requires network vehicle allocation
         if (sim.getScenario().getConfig().qsim().getMainModes().contains(chosenMode)) {
-            WithinDayAgentUtils.addVehicleToQSimIfNecessary(newNextTrip, scenario, sim);
+            WithinDayAgentUtils.addVehicleToQSimIfNecessary(
+                (List<? extends PlanElement>) action.get("newNextTrip"), 
+                scenario, sim
+            );
         }
     }
 
@@ -153,8 +157,34 @@ public abstract class WithinDayReplanner {
      * @return Status string response from feedback processing (e.g., "COMPLETED" or raw JSON response).
      */
     public void step(MobsimAgent agent, QSim sim, double simulationTime, boolean rescheduleActivityEndTime) {
-        log.debug("Default step handler executed for agent {} at time {}", agent.getId(), simulationTime);
-        log.info("Step completed");
+        Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
+        Id<Person> agentId = (Id<Person>) demographics.get("agentId");
+
+        // Create agent experience database
+        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
+            agentId, 
+            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        );
+
+        // Get trip metrics from completed trip
+        Trip completedTrip = findCompletedTrip(agent);
+        if (completedTrip == null) return;
+
+        Map<String, Object> metrics = extractTripMetrics(completedTrip);
+        String currentModeUsed = (String) metrics.get("mode");
+
+        // Get the trip Kai-nagel score
+        WithinDayRealTimeScoringEngine rewardCalculator = this.customObserver.tripEvaluationMetrics(
+            agent, currentModeUsed, completedTrip);
+        double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
+
+        Map<String, Object> nextState = this.customObserver.observeState(agent, sim, completedTrip, simulationTime, true);
+        if ((boolean) nextState.get("endOfDayFlag")){
+            this.customObserver.finalizeDay(agent, completedTrip.getDestinationActivity(), simulationTime);
+            experience.finalizeDay(rewardCalculator.getAccumulatedDayReward(), rewardCalculator.getAccumulatedDayScore());
+        }
+
+        experience.recordTrip(currentModeUsed, currentStepMatsimScore, 0, 0);
         
         if (rescheduleActivityEndTime){
             rescheduleActivityEnd(agent, sim, simulationTime, false);
@@ -209,7 +239,7 @@ public abstract class WithinDayReplanner {
     }
 
     /**
-     * Hook method specifying the HTTP decision endpoint on the Python server.
+     * Method specifying the HTTP decision endpoint on the Python server.
      * Subclasses override this method to route requests to custom serving models.
      *
      * @return Endpoint URL path string (default is "/decision/mode-choice").
@@ -219,23 +249,67 @@ public abstract class WithinDayReplanner {
     }
 
     /**
-     * Method to reset internal states or observer caches at iteration boundaries.
+     * Method specifying the HTTP decision endpoint on the Python server.
+     * Subclasses override this method to route requests to custom serving models.
      *
-     * @param iteration The index of the iteration currently starting.
+     * @return Endpoint URL path string (default is "/decision/mode-choice").
      */
-    public void reset(IterationEndsEvent event) {
-        if (this.customObserver != null) {
-            this.customObserver.reset();
-        }
+    protected String getStepUpdateEndpoint() {
+        return "/feedback/score";
     }
 
     /**
-     * Optional accessor for agent experience tracking metrics.
-     *
-     * @return Map mapping Person IDs to experience records, or null if tracking is disabled.
+     * 
+     * @param agent
+     * @return
      */
-    public Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences() {
+    protected Trip findCompletedTrip(MobsimAgent agent) {
+        Plan executedPlan = WithinDayAgentUtils.getModifiablePlan(agent);
+        List<Trip> trips = TripStructureUtils.getTrips(executedPlan);
+
+        for (Trip trip : trips) {
+            if (trip.getDestinationActivity().equals(WithinDayAgentUtils.getCurrentPlanElement(agent))) {
+                return trip;
+            }
+        }
         return null;
+    }
+
+    /**
+     * 
+     * @param agent
+     * @return
+     */
+    protected Map<String, Object> extractTripMetrics(Trip completedTrip) {
+        double totalTripDistance = 0;
+        double totalTripTravelTime = 0;
+        String currentModeUsed = "unknown";
+        
+        List<Leg> legsInTrip = completedTrip.getLegsOnly();
+        for (Leg leg : legsInTrip) {
+            totalTripDistance += leg.getRoute().getDistance();
+            totalTripTravelTime += leg.getTravelTime().orElse(0.0);
+            if (!leg.getMode().contains("walk")) {
+                currentModeUsed = leg.getMode();
+            }
+        }
+
+        Map<String, Object> metrics = new HashMap<>();
+        metrics.put("distance", totalTripDistance);
+        metrics.put("travelTime", totalTripTravelTime);
+        metrics.put("mode", currentModeUsed);
+        metrics.put("transfers", Math.max(0, completedTrip.getLegsOnly().size() - 2)); // Example transfer logic
+        return metrics;
+    }
+
+    /**
+     * Default reporting hook. Subclasses can override this to write 
+     * to different reporters (e.g., Custom vs WithinDay reporting).
+     */
+    protected void handleIterationReporting(IterationEndsEvent event) {
+        if (this.agentExperiences != null && !this.agentExperiences.isEmpty()) {
+            IterationEndReporting.writeAgentStatsCsv(event, this.agentExperiences);
+        }
     }
 
     public void initEditTrips() {
@@ -244,5 +318,22 @@ public abstract class WithinDayReplanner {
             // internalInterface is null on purpose. This is only needed if current legs are replanned. But we are replacing future trips only (i.e. before activity ends).
             editTrips = new EditTrips(router, scenario, null, timeInterpretation);
         }
+    }
+
+    /**
+     * Method to reset internal states or observer caches at iteration boundaries.
+     *
+     * @param iteration The index of the iteration currently starting.
+     */
+    public void reset(IterationEndsEvent event) {
+        int iteration = event.getIteration();
+
+        if (this.customObserver != null) {
+            this.customObserver.reset();
+        }
+
+        handleIterationReporting(event);
+        this.agentExperiences.clear();
+        log.info("RL PLANNER: Agent experiences cleared for iteration {}", iteration);
     }
 }

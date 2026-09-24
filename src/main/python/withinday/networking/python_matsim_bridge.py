@@ -1,7 +1,8 @@
 import os
 import importlib
 import logging
-from typing import Dict, Any
+from pathlib import Path
+from typing import Dict, Any, Optional
 from threading import Lock
 
 logger = logging.getLogger("matsim_bridge")
@@ -77,8 +78,7 @@ class BaseSimulationBridgeService:
                 "configured": bool(self.session_config)
             }
 
-
-def load_bridge_service() -> BaseSimulationBridgeService:
+def load_bridge_service() -> Optional[BaseSimulationBridgeService]:
     """
     Dynamically imports and instantiates the bridge service class specified 
     by the `SERVICE_CLASS` environment variable.
@@ -88,7 +88,11 @@ def load_bridge_service() -> BaseSimulationBridgeService:
     
     :return: An instance of a class extending `BaseSimulationBridgeService`.
     """
-    service_path = os.getenv("SERVICE_CLASS", "custom_services.HeuristicModeChoiceService")
+    service_path = os.getenv("SERVICE_CLASS", "none")
+
+    if not service_path or service_path.lower() == "none":
+        logger.info("Running baseline mode: No external bridge service loaded.")
+        return None
     
     try:
         module_name, class_name = service_path.rsplit(".", 1)

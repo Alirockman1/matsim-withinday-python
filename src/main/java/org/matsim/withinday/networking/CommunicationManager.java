@@ -5,7 +5,6 @@ import org.apache.logging.log4j.Logger;
 
 import com.google.inject.Singleton;
 
-import org.matsim.api.core.v01.population.Person;
 import org.matsim.core.controler.events.ShutdownEvent;
 import org.matsim.core.controler.events.StartupEvent;
 import org.matsim.core.controler.listener.ShutdownListener;

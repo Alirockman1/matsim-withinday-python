@@ -4,12 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Person;
-import org.matsim.withinday.environment.RealTimeScoringEngine;
+import org.matsim.withinday.environment.WithinDayRealTimeScoringEngine;
 
 public class WithinDayAgentExperience {
 
     private final Id<Person> agentId;
-    private final RealTimeScoringEngine scoringEngine;
+    private final WithinDayRealTimeScoringEngine scoringEngine;
     
     // Per-trip tracking collections
     private final List<String> experiencedModes = new ArrayList<>();
@@ -22,14 +22,14 @@ public class WithinDayAgentExperience {
     private double finalDayEndReward = 0.0;
     private double finalDayEndScore = 0.0;
 
-    public WithinDayAgentExperience(Id<Person> agentId, RealTimeScoringEngine scoringEngine) {
+    public WithinDayAgentExperience(Id<Person> agentId, WithinDayRealTimeScoringEngine scoringEngine) {
         this.agentId = agentId;
         this.scoringEngine = scoringEngine;
     }
 
     // --- Record-keeping methods ---
     
-    public void recordTrip(String mode, double reward, double score, double deltaQ) {
+    public void recordTrip(String mode, double score, double reward, double deltaQ) {
         this.experiencedModes.add(mode);
         this.tripRewards.add(reward);
         this.tripScores.add(score);
@@ -45,7 +45,7 @@ public class WithinDayAgentExperience {
     // --- Getters ---
 
     public Id<Person> getAgentId() { return agentId; }
-    public RealTimeScoringEngine getScoringEngine() { return scoringEngine; }
+    public WithinDayRealTimeScoringEngine getScoringEngine() { return scoringEngine; }
     public List<String> getExperiencedModes() { return experiencedModes; }
     public List<Double> getTripRewards() { return tripRewards; }
     public List<Double> getTripScores() { return tripScores; }

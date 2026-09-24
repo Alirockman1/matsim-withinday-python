@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
         "./src/main/python/withinday/networking"
-    ]
+    ],
+    "java.configuration.updateBuildConfiguration": "interactive"
 }

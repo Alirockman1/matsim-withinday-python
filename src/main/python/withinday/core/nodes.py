@@ -1,66 +1,48 @@
 import os
 import subprocess
+from typing import Dict, Any, Optional
 
 class WorkerNode:
-    def __init__(self, output_directory, config_file_path, matsim_iteration, num_threads, training_iteration, 
-                learning_rate, gamma, epsilon_decay, min_epsilon, replanner_class, observer_class,
-                penalty_weights = [1.0,1.0], java_heap="12g"):
+    def __init__(self, java_run_script: str, output_directory: str, config_file_path: str, matsim_iteration: Any, 
+                num_threads: Any, replanner_class: Optional[str] = "default", observer_class: Optional[str] = "default",
+                java_heap: str = "12g", extra_config: Optional[Dict[str, Any]] = None):
         """
         Initializes the distributed worker tuning node."""
 
+        self._java_run_script = java_run_script
         self._output_dir = output_directory
         self._config_path = config_file_path
         
         self._iteration= matsim_iteration
         self._threads = num_threads
-        self._training_iteration = training_iteration
-        self._alpha = learning_rate
-        self._gamma = gamma
-        self._decay= epsilon_decay
-        self._min_epsilon = min_epsilon
-
         self._java_heap = java_heap
 
         self._replanner_class = replanner_class
         self._observer_class = observer_class
-
-        if len(penalty_weights) == 2:
-            self._discontinuity_weight = penalty_weights[0]
-            self._retrieval_cost_weight = penalty_weights[1]
-        elif len(penalty_weights) == 1:
-            self._discontinuity_weight = penalty_weights[0]
-            self._retrieval_cost_weight = penalty_weights[0]
-        else:
-            self._discontinuity_weight = 1.0
-            self._retrieval_cost_weight = 1.0
+        self._extra_config = extra_config or {}
 
     def run(self):
-        '''
-        Execute the java run script'''
+            cmd = [
+                "java",
+                f"-Xmx{self._java_heap}",
+                "-Djava.awt.headless=true",
+                "-cp", "/app/simulation.jar",
+                f"{self._java_run_script}",
+                f"{self._config_path}",
+                f"--config:controller.outputDirectory={self._output_dir}",
+                f"--config:controller.lastIteration={self._iteration}",
+                f"--config:global.numberOfThreads={self._threads}"
+            ]
 
-        cmd = [
-            "java",
-            f"-Xmx{self._java_heap}",
-            "-Djava.awt.headless=true",
-            "-cp", "/app/simulation.jar",
-            "org.matsim.withinday.core.RunExternalModeChoice",
-            f"{self._config_path}",
-            f"--config:controller.outputDirectory={self._output_dir}",
-            f"--config:controller.lastIteration={self._iteration}",
-            f"--config:global.numberOfThreads={self._threads}",
-            f"--config:agentModeChoice.trainingCutoffIteration={self._training_iteration}",
-            f"--config:agentModeChoice.alpha={self._alpha}",
-            f"--config:agentModeChoice.gamma={self._gamma}",
-            f"--config:agentModeChoice.epsilonDecay={self._decay}",
-            f"--config:agentModeChoice.epsilonMinimum={self._min_epsilon}",
-            f"--config:agentModeChoice.discontinuityPenalty={self._discontinuity_weight}",
-            f"--config:agentModeChoice.retrievalCostPenalty={self._retrieval_cost_weight}"
-        ]
+            # Injects project-specific config parameters dynamically
+            for key, value in self._extra_config.items():
+                if value is not None:
+                    cmd.append(f"--config:{key}={value}")
 
-        if self._replanner_class and self._replanner_class != "default":
-            cmd.append(f"--config:withinday.replanner={self._replanner_class}")
+            if self._replanner_class and self._replanner_class != "default":
+                cmd.append(f"--config:withinday.replanner={self._replanner_class}")
 
-        if self._observer_class and self._observer_class != "default":
-            cmd.append(f"--config:withinday.observer={self._observer_class}")
+            if self._observer_class and self._observer_class != "default":
+                cmd.append(f"--config:withinday.observer={self._observer_class}")
 
-        subprocess.run(cmd, check=True, env=os.environ)
+            subprocess.run(cmd, check=True, env=os.environ)

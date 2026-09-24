@@ -16,7 +16,7 @@ import org.matsim.core.mobsim.qsim.agents.WithinDayAgentUtils;
 import org.matsim.core.network.NetworkUtils;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.router.TripStructureUtils.Trip;
-import org.matsim.project.rl.utils.CustomConfigGroup;
+import org.matsim.withinday.utils.WithinDayConfigGroup;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -47,30 +47,18 @@ public class AgentAssetInventory {
         startOfDayLocations.clear();
         agentLastLink.clear();
         agentTourStatus.clear();
-        ALL_MODES.clear();
-        TOUR_BASED_MODES.clear();
     }
 
     // This method initialize the location of agents and the modes
-    public static void initializeModeLocationTagging(Scenario scenario){
-        // Initialize the modes available in the network
-        CustomConfigGroup configGroup = (CustomConfigGroup) scenario.getConfig().getModule(CustomConfigGroup.GROUP_NAME);
-        if (configGroup != null) {
-            parseAndAddModes(configGroup.getModes(), ALL_MODES);
-            parseAndAddModes(configGroup.getTourBasedModes(), TOUR_BASED_MODES);
-        }
-
-        // All individuals in the population file
-        Collection<? extends Person> persons = scenario.getPopulation().getPersons().values();
-
-        // Attach a Geo-tag for each inidvidual in the scenario
-        for (Person person : persons){
-
+    public static void initializeModeLocationTagging(Scenario scenario, Set<Id<Person>> selectedAgentsId){
+        // Attach a Geo-tag for filtered individuals
+        for (Id<Person> agentID : selectedAgentsId){
             // Get ID of the person
-            Id<Person> agentID = person.getId();
+            Person person = scenario.getPopulation().getPersons().get(agentID);
             Plan plan = person.getSelectedPlan();
 
             if (plan == null || plan.getPlanElements().isEmpty()) {
+                log.warn("Agent {} skipped initialization: Plan is null or empty.", agentID);
                 continue;
             }
 
@@ -78,10 +66,12 @@ public class AgentAssetInventory {
             Id<Link> startLinkID = firstActivity.getLinkId();
 
             if (startLinkID == null) {
+                log.warn("Agent {} skipped initialization: First activity startLinkID is null.", agentID);
                 continue;
             }
 
-            if (getModeLocation(agentID) == null) {
+            // Fixed check: verifies if the key is missing OR the map is empty
+            if (!agentModeInventory.containsKey(agentID) || getModeLocation(agentID).isEmpty()) {
 
                 setStartOfDayLocation(agentID, startLinkID);
                 
@@ -91,20 +81,20 @@ public class AgentAssetInventory {
 
                     if (!isAssetAvailable) {
                         setModeLocation(agentID, mode, Id.createLinkId("99999999"));
-                    }else{
+                    } else {
                         setModeLocation(agentID, mode.trim(), startLinkID);
-                    }				
+                    }                
                 }
             }
 
-            // Look if the plan is tour based for all agents (start actiivty location is same as the last activity location)
+            // Look if the plan is tour based for all agents (start activity location is same as the last activity location)
             Activity lastActivity = (Activity) plan.getPlanElements().get(plan.getPlanElements().size() - 1);
             boolean isTourBasedPlan = firstActivity.getLinkId().equals(lastActivity.getLinkId());
 
             setTourBasedPlan(agentID, isTourBasedPlan);
         }
 
-        log.info("Geo-Tags attached to all agents in the environment.");
+        log.info("Geo-Tags attached to the selected agents in the environment.");
     }
 
     private static void parseAndAddModes(String rawString, Set<String> targetSet) {
@@ -190,6 +180,16 @@ public class AgentAssetInventory {
         return penaltyMap;
     }
 
+    // SETTER: Allocate the Simulation modes as a set of strings
+    public static void setSimulationBasedModes(Scenario scenario){
+        WithinDayConfigGroup configGroup = (WithinDayConfigGroup) scenario.getConfig().getModule(WithinDayConfigGroup.GROUP_NAME);
+        
+        if (configGroup != null) {
+            parseAndAddModes(configGroup.getModes(), ALL_MODES);
+            parseAndAddModes(configGroup.getTourBasedModes(), TOUR_BASED_MODES);
+        }
+    }
+    
     // GETTER: Retrieval times incase of abandoned mode
     public static Double getModeRetrievalTimes(MobsimAgent agent, Scenario scenario, int currentTripIndex, Logger log){
 
@@ -271,14 +271,25 @@ public class AgentAssetInventory {
         }
 
         return modeRetrievalTime;
-
     }
 
-    // GETTER: All simulation mdoes
-    public static Set<String> getAllModes() { return Collections.unmodifiableSet(ALL_MODES); }
+    // GETTER: All simulation modes
+    public static Set<String> getSimulationModes() {return Collections.unmodifiableSet(ALL_MODES);}
     
     // GETTER: Tour based modes specified in the config
-    public static Set<String> getTourBasedModes() { return Collections.unmodifiableSet(TOUR_BASED_MODES); }
+    public static Set<String> getSimulationTourBasedModes() {return Collections.unmodifiableSet(TOUR_BASED_MODES);}
+    
+    // GETTER: All simulation modes as a string
+    public static String getSimulationModesAsString() { 
+        Set<String> simulationModes = getSimulationModes();
+        return String.join(",", simulationModes);
+    }
+    
+    // GETTER: Tour based modes specified in the config as string
+    public static String getSimulationTourBasedModesAsString() {         
+        Set<String> simulationTourBasedModes = getSimulationTourBasedModes();
+        return String.join(",", simulationTourBasedModes);
+    }
 
     // SETTER: Update the tour plan for agents
     public static void setTourBasedPlan(Id<Person> agentId, boolean isTour) {
@@ -310,7 +321,7 @@ public class AgentAssetInventory {
     // GETTER: The location of all modes
     public static Map<String,Id<Link>> getModeLocation(Id<Person> personId) {
         if (!agentModeInventory.containsKey(personId)) {
-            return null;
+            return Collections.emptyMap();
         }
         return agentModeInventory.get(personId);
     }

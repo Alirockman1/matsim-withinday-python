@@ -17,8 +17,6 @@ import org.matsim.core.network.NetworkUtils;
 import org.matsim.core.utils.geometry.CoordUtils;
 import org.matsim.core.utils.misc.OptionalTime;
 
-
-
 public class StateEngine{
     private static NavigableMap<Double, Integer> TIME_BIN_LOOKUP = new TreeMap<>();
     private static Map<Set<String>, Integer> MODE_AVAILABILITY_MAP = new HashMap<>();
