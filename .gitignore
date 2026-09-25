@@ -20,3 +20,6 @@ dependency-reduced-pom.xml
 
 # IDEs & System Files
 .vscode/
+
+# The docker zip folders
+*.tar
