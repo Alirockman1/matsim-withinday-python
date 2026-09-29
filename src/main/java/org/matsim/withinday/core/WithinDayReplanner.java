@@ -184,7 +184,7 @@ public abstract class WithinDayReplanner {
             experience.finalizeDay(rewardCalculator.getAccumulatedDayReward(), rewardCalculator.getAccumulatedDayScore());
         }
 
-        experience.recordTrip(currentModeUsed, currentStepMatsimScore, 0, 0);
+        experience.recordTrip(currentModeUsed, currentStepMatsimScore, 0);
         
         if (rescheduleActivityEndTime){
             rescheduleActivityEnd(agent, sim, simulationTime, false);
@@ -245,7 +245,7 @@ public abstract class WithinDayReplanner {
      * @return Endpoint URL path string (default is "/decision/mode-choice").
      */
     protected String getDecisionEndpoint() {
-        return "/decision/mode-choice";
+        return "/decision/mode_choice";
     }
 
     /**
@@ -254,7 +254,7 @@ public abstract class WithinDayReplanner {
      *
      * @return Endpoint URL path string (default is "/decision/mode-choice").
      */
-    protected String getStepUpdateEndpoint() {
+    protected String getRewardFeedbackEndpoint() {
         return "/feedback/score";
     }
 

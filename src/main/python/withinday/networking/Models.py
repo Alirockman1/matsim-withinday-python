@@ -12,11 +12,8 @@ class ObserverData(BaseModel):
     features: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 class ArrivalData(BaseModel):
-    ''' The observer data structure (Data communicated during arrival at an activity)'''
+    ''' The reward update data structure'''
     agentID: str
-    travelTimeSeconds: float
-    numberOfTransfers: int
-    distance: float
     reward: float
     matsimScore: float
     isTerminal: Optional[bool] = False

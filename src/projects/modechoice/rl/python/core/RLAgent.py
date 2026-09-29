@@ -162,18 +162,20 @@ class DecentralizedQLearningAgent:
 
         # The new optimized header
         header = (f"{'DEPARTURE GRID':<18} | {'ARRIVAL GRID':<18} | "
-                  f"{'DEP BIN':<8} | {'FLEXIBILITY':<12} | {'ASSETS':<12} || "
+                  f"{'DEP BIN':<8} | {'ASSETS':<12} || "
                   f"{'CAR':<7} | {'PT':<7} | {'BIKE':<7} | {'WALK':<7}")
         print(header)
         print("-" * width)
 
-        sorted_table = sorted(self._q_table[agent_id].items(), key=lambda x: x[0])
+        #sorted_table = sorted(self._q_table[agent_id].items(), key=lambda x: x[0])
 
-        for state_bits, actions in sorted_table:
+        for state_bits, actions in self._q_table[agent_id].items():
             # Emergency fallback filter for short/terminal states
-            if "TERMINAL" in state_bits or len(state_bits) < 151:
+            state_bits_string = [str(bit) for bit in state_bits]
+
+            if "TERMINAL" in state_bits or len(state_bits) < 136:
                 terminal_row = (f"{'TERMINAL STATE':<18} | {' ':<18} | "
-                                f"{'-':<8} | {'-':<12} | {'TERMINAL':<12} || "
+                                f"{'-':<8} | {'TERMINAL':<12} || "
                                 f"{actions.get('car', 0.0):>7.2f} | {actions.get('pt', 0.0):>7.2f} | "
                                 f"{actions.get('bike', 0.0):>7.2f} | {actions.get('pedestrian', 0.0):>7.2f}")
                 print(terminal_row)
@@ -181,27 +183,29 @@ class DecentralizedQLearningAgent:
                 continue
 
             # 1. Unpack the components
-            dep = state_bits[0:64]
-            arr = state_bits[64:128]
-            tme = state_bits[128:146]
-            flx = state_bits[146]
-            ast = state_bits[147:151]
+            dep = state_bits_string[0:64]
+            arr = state_bits_string[64:128]
+            #flx = state_bits_string[133]
+            tme = "".join(state_bits_string[128:133])
+            ast = "".join(state_bits_string[134:136])
 
             # 2. Decode Labels
-            tau_val = tme.find('1')
-            flex_label = "FLEXIBLE" if flx == '1' else "CONSTRAINED"
-            
-            asset_idx = ast.find('1')
+            #tau_val = self._find_index(tme, '1')
+            #asset_idx = self._find_index(ast, '1')
+            tau_val = int(tme, 2)
+            asset_idx = int(ast, 2)
+            #flex_label = "FLEXIBLE" if flx == '1' else "CONSTRAINED"
+            print(asset_idx)
             asset_label = {0: "NONE", 1: "CAR ONLY", 2: "BIKE ONLY", 3: "CAR + BIKE"}.get(asset_idx, "NONE")
 
             # 3. Slice bits into a 4x16 Matrix (4 chunks of 16 bits each)
-            d_chunks = [dep[0:16], dep[16:32], dep[32:48], dep[48:64]]
-            a_chunks = [arr[0:16], arr[16:32], arr[32:48], arr[48:64]]
+            d_chunks = ["".join(state_bits_string[0:16]), "".join(state_bits_string[16:32]), "".join(state_bits_string[32:48]), "".join(state_bits_string[48:64])]
+            a_chunks = ["".join(state_bits_string[64:80]), "".join(state_bits_string[80:96]), "".join(state_bits_string[96:112]), "".join(state_bits_string[112:128])]
 
             # 4. Print 4 unified rows combining the Grid segments and Metrics
             # Row 1 contains the core labels and values
             row1 = (f"{d_chunks[0]:<18} | {a_chunks[0]:<18} | "
-                    f"{str(tau_val):<8} | {flex_label:<12} | {asset_label:<12} || "
+                    f"{str(tau_val):<8} | {asset_label:<12} || "
                     f"{actions.get('car', 0.0):>7.2f} | "
                     f"{actions.get('pt', 0.0):>7.2f} | "
                     f"{actions.get('bike', 0.0):>7.2f} | "
@@ -209,16 +213,22 @@ class DecentralizedQLearningAgent:
             print(row1)
 
             # Row 2, 3, and 4 continue the bit grids while leaving metrics columns clean
-            row2 = f"{d_chunks[1]:<18} | {a_chunks[1]:<18} | {' ':<8} | {' ':<12} | {' ':<12} || {' ' * 37}"
+            row2 = f"{d_chunks[1]:<18} | {a_chunks[1]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
             print(row2)
 
-            row3 = f"{d_chunks[2]:<18} | {a_chunks[2]:<18} | {' ':<8} | {' ':<12} | {' ':<12} || {' ' * 37}"
+            row3 = f"{d_chunks[2]:<18} | {a_chunks[2]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
             print(row3)
 
-            row4 = f"{d_chunks[3]:<18} | {a_chunks[3]:<18} | {' ':<8} | {' ':<12} | {' ':<12} || {' ' * 37}"
+            row4 = f"{d_chunks[3]:<18} | {a_chunks[3]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
             print(row4)
             
             # Section break
             print("." * width)
 
         print(f"{'=' * width}\n")
+
+    def _find_index(self, sequence, target='1'):
+        try:
+            return list(sequence).index(target)
+        except ValueError:
+            return 0

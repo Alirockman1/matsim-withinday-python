@@ -78,6 +78,12 @@ class BaseSimulationBridgeService:
                 "configured": bool(self.session_config)
             }
 
+    def reset():
+        """
+        Reset the internal memory stored within the bridge.
+        """
+        pass
+
 def load_bridge_service() -> Optional[BaseSimulationBridgeService]:
     """
     Dynamically imports and instantiates the bridge service class specified 

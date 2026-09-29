@@ -1,19 +1,8 @@
-def update_experience(data, agent, daily_stats):
-    feature_map = data.features
-    
-    # Accumulate Daily Stats
-    stats = daily_stats.setdefault(data.agentID, {"reward": 0.0, "matsim_score": 0.0})
-    stats["reward"] += data.reward
-    stats["matsim_score"] += data.matsimScore
-
-    # Determine the next state (Terminal state is None)
-    next_state = None
-
-    if not data.isTerminal:
-        next_state = tuple(feature_map["nextRawBitStateRepresentation"])
-        agent.init_state(data.agentID, next_state)
-
-    return data.reward, next_state, data.isTerminal
+def update_reward(data, agent_trip_memory):
+    reward   = data.reward
+    matsim_score = data.matsimScore
+    print(f"The reward being updated is {reward}")
+    agent_trip_memory["reward_history"].append(reward)
 
 
 def finalize_session(data, trip_memory, agent, logger):

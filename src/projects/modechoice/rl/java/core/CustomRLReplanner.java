@@ -12,6 +12,7 @@ import org.matsim.api.core.v01.population.Leg;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.api.core.v01.population.Plan;
 import org.matsim.api.core.v01.population.PlanElement;
+import org.matsim.contrib.analysis.vsp.qgis.QGisConstants.pointLayerSymbol;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.core.mobsim.framework.MobsimAgent;
 import org.matsim.core.mobsim.qsim.QSim;
@@ -89,36 +90,44 @@ public class CustomRLReplanner extends WithinDayReplanner {
 
     @Override
     protected Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation) {
+        Map<String, Object> payload = new HashMap<>();
         Plan modifiablePlan = WithinDayAgentUtils.getModifiablePlan(agent);
-        
+        Id<Person> agentId = agent.getId();
+
         stateObservation.put("simulationIteration", StateEngine.currentIteration);
         if (agentDemographics != null) {
             stateObservation.put("subpopulation", agentDemographics.getOrDefault("subpopulation", "default"));
         }
 
+        // Retrieve agent experience to check for pending rewards from the prior trip
+        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(agentId, 
+            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        );
+
         // Request decision from serving model via HTTP POST
-        log.info("COMMUNICATION NET: Transmitting environment state for agent {}", agentDemographics.get("agentId").toString());
-        String jsonPayload = gson.toJson(stateObservation);
+        log.info("COMMUNICATION NET: Transmitting environment state for agent {}", agentId.toString());
+        String jsonStateObservationPayload = gson.toJson(stateObservation);
 
         // Transmit state payload and query the external decision model endpoint via HTTP POST
-        String rawResponse = fireHttpCallback(jsonPayload, getDecisionEndpoint(), 360, agent.getId());
-        
-        String chosenMode = "pedestrian";
-        if (rawResponse != null && !rawResponse.isBlank()) {
-            String trimmed = rawResponse.trim();
-            if (trimmed.startsWith("{")) {
-                Map<String, Object> resMap = gson.fromJson(trimmed, HashMap.class);
-                if (resMap != null && resMap.containsKey("mode")) chosenMode = (String) resMap.get("mode");
-            } else {
-                chosenMode = trimmed;
-            }
+        String rawModeResponse = fireHttpCallback(jsonStateObservationPayload, getDecisionEndpoint(), 360, agentId);
+        String chosenMode = (String) parseResponse(rawModeResponse);
+        if (chosenMode==null){
+            chosenMode = "pedestrian";
         }
 
-        log.info("RL MODE CHOICE: Assigned mode '{}' to agent {}", chosenMode.toUpperCase(), agentDemographics.get("agentId").toString());
+        log.info("RL MODE CHOICE: Assigned mode '{}' to agent {}", chosenMode.toUpperCase(), agentId.toString());
 
         // Update agent's executed plan in memory
         List<? extends PlanElement> newNextTrip = editTrips.replanFutureTrip(nextTrip, modifiablePlan, 
             chosenMode, agent.getActivityEndTime());
+
+        // Update the Q values based on agent experience
+        String updateResponse = fireHttpCallback(jsonStateObservationPayload, "/policy/update", 360, agentId);
+
+        Double deltaQ = (Double) parseResponse(updateResponse);
+        
+        if (deltaQ==null)deltaQ = 0.0;
+        experience.setDeltaQ(deltaQ);
 
         Map<String, Object> result = new HashMap<>();
         result.put("mode", chosenMode);
@@ -126,44 +135,28 @@ public class CustomRLReplanner extends WithinDayReplanner {
         return result;
     }
 
-    /**
+/**
      * Overridden step method calculating post-trip MATSim scores, step rewards, and posting feedback to Python.
      *
-     * @param agent          The MATSim agent completing the trip.
-     * @param sim            The active queue simulation instance.
-     * @param completedTrip  The completed trip leg structure.
-     * @param simulationTime Current simulation timestamp in seconds.
-     * @return Raw JSON response string from the Python feedback endpoint.
+     * @param agent                  The MATSim agent completing the trip.
+     * @param sim                    The active queue simulation instance.
+     * @param simulationTime         Current simulation timestamp in seconds.
+     * @param rescheduleActivityEndTime Boolean flag to reschedule activity end.
      */
     @Override
     public void step(MobsimAgent agent, QSim sim, double simulationTime, boolean rescheduleActivityEndTime) {
-        Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
-        Id<Person> agentId = (Id<Person>) demographics.get("agentId");
-
-        // The live plan and corresponding trips
-        Plan executedPlan = WithinDayAgentUtils.getModifiablePlan(agent);
-        List<Trip> trips = TripStructureUtils.getTrips(executedPlan);
-
-        Trip completedTrip = null;
-        for (Trip trip : trips) {
-            // Match the trip whose destination is the current activity the agent just started
-            if (trip.getDestinationActivity().equals(WithinDayAgentUtils.getCurrentPlanElement(agent))) {
-                completedTrip = trip;
-                break;
-            }
-        }
-
-        if (completedTrip == null) return;
-
-        // --- REWARD PARAMETER COMPUTATION ---
         double totalTripDistance = 0;
         double totalTripTravelTime = 0;
         int mainModeLegCount = 0;
         String currentModeUsed = "unknown";
-        double stepDeltaQ = 0.0;
-        Activity previousActivity = completedTrip.getOriginActivity();;       
-            
-        // Trip matrics (Penalty for traveling)
+
+        Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
+        Id<Person> agentId = (Id<Person>) demographics.get("agentId");
+
+        Trip completedTrip = getCompletedTrip(agent);
+        if (completedTrip == null) return;
+
+        Activity previousActivity = completedTrip.getOriginActivity();     
         List<Leg> legsInTrip = completedTrip.getLegsOnly();
 
         for (Leg leg : legsInTrip) {
@@ -177,100 +170,105 @@ public class CustomRLReplanner extends WithinDayReplanner {
         }
 
         int numberOfTransfers = Math.max(0, mainModeLegCount - 1);
-
-        // Spatial penalty (check if mode is available at location)
-        Id<Link> previousLinkId = previousActivity.getLinkId();
-        Map<String, Integer> modeDiscontinuityPenaltyMap = AgentAssetInventory.getModeDiscontinuityPenalty(agentId, previousLinkId);
-
-        //Map<String, Id<Link>> previousInventorySnapshot = new HashMap<>(ModeUtils.getModeLocation(agentId));
-        System.out.println("The previous mode location at " + previousLinkId.toString() + " is: " + AgentAssetInventory.getModeLocation(agentId));
-
-        // --- UPDATING INVENTORY FOR New Location ---
-        // Get all modes (including tour based modes - i.e resources)
-        Id<Link> currentLinkId = agent.getCurrentLinkId();
-        AgentAssetInventory.updateModeLocation(agentId, currentLinkId, previousLinkId, currentModeUsed, modeDiscontinuityPenaltyMap);
-
-        System.out.println("The current mode location at " + currentLinkId.toString() + " is: " + AgentAssetInventory.getModeLocation(agentId));
-
-        // --- COMPUTE STEP-WISE REWARD ---
-        int currentTripIndex = trips.indexOf(completedTrip);
-        boolean isTour = AgentAssetInventory.getIsTourBased(agent.getId());
-        double modeRetrievalTime = 0.0;
-
-        if (isTour) {
-            modeRetrievalTime = AgentAssetInventory.getModeRetrievalTimes(agent, this.scenario, currentTripIndex, this.log);
-        }
-
-        WithinDayRealTimeScoringEngine rewardCalculator = this.customObserver.tripEvaluationMetrics(
-            agent, currentModeUsed, completedTrip, modeRetrievalTime, modeDiscontinuityPenaltyMap
-        );
+        
+        // REWARD PARAMETER COMPUTATION
+        WithinDayRealTimeScoringEngine rewardCalculator = updateAndGetStepwiseScoringEngine(agent, previousActivity, currentModeUsed);
+        double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
+        double currentStepReward = rewardCalculator.getCurrentStepReward();
+        System.out.println("Temporary Logs: The current step matsim score is " + currentStepMatsimScore);
 
         WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
             agentId, 
             id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
         );
 
-        double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
-        double currentStepReward = rewardCalculator.getCurrentStepReward();
-
-        System.out.println("Temporary Logs: The current step matsim score is " + currentStepMatsimScore);
+        experience.recordTrip(currentModeUsed, currentStepMatsimScore, currentStepReward);
 
         // --- NEXT STATE DATA ---
         Map<String, Object> nextState = this.customObserver.observeState(agent, sim, completedTrip, simulationTime, true);
         boolean isEndOfDay = (boolean) nextState.get("endOfDayFlag");
 
-        if (isEndOfDay){
-            this.customObserver.finalizeDay(agent, completedTrip.getDestinationActivity(), simulationTime);
-            log.info("The end of the day score for " + agentId.toString() + " is: " + rewardCalculator.getAccumulatedDayScore());
+        // 1. Build common payload structure for feedback/scoring
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("agentID", agentId.toString());
+        payload.put("reward", currentStepReward);
+        payload.put("matsimScore", currentStepMatsimScore);
+        payload.put("isTerminal", isEndOfDay);
+
+        String jsonPayload = gson.toJson(payload);
+        fireHttpCallback(jsonPayload, getRewardFeedbackEndpoint(), 360, agentId);
+
+        if (isEndOfDay) {
+            String updateResponse = fireHttpCallback(jsonPayload, "/policy/update", 360, agentId);
+            System.out.println(updateResponse);
+            Double deltaQ = (Double) parseResponse(updateResponse);
+            
+            if (deltaQ==null)deltaQ = 0.0;
+            experience.setDeltaQ(deltaQ);
+
+            System.out.println("RL MODE CHOICE: The policy updated successfully at the last leg with a delta Q of " + deltaQ);
+            
+            customObserver.finalizeDay(agent, completedTrip.getDestinationActivity(), simulationTime);
 
             experience.finalizeDay(
                 rewardCalculator.getAccumulatedDayReward(), 
                 rewardCalculator.getAccumulatedDayScore()
             );
-
-            System.out.println("Temporary Logs: The total matsim score is " + rewardCalculator.getAccumulatedDayScore());
         }
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> nextFeatures = (Map<String, Object>) nextState.get("features");
-        Object nextRawBitState = (nextFeatures != null) ? nextFeatures.get("rawBitStateRepresentation") : null;
-
-        Map<String, Object> stepFeatures = new HashMap<>();
-        stepFeatures.put("nextRawBitStateRepresentation", nextRawBitState);
-
-        // REWARD MAP
-        Map<String, Object> jsonMap = new HashMap<>();
-        jsonMap.put("agentID", agentId.toString());
-        jsonMap.put("travelTimeSeconds", totalTripTravelTime);
-        jsonMap.put("numberOfTransfers", numberOfTransfers);
-        jsonMap.put("distance", totalTripDistance);
-        jsonMap.put("reward", currentStepReward);
-        jsonMap.put("matsimScore", currentStepMatsimScore);
-        jsonMap.put("isTerminal", isEndOfDay);
-
-        jsonMap.put("features", stepFeatures);
-
-        if (isEndOfDay){
-            jsonMap.put("accumulativeScore", rewardCalculator.getAccumulatedDayScore());
-            jsonMap.put("accumulativeReward", rewardCalculator.getAccumulatedDayReward());
+        if (rescheduleActivityEndTime) {
+            rescheduleActivityEnd(agent, sim, simulationTime, false);
         }
-
-        // Step info
-        log.info("COMMUNICATION NET: Transmitting next step for agent {}", agentId);
-        String jsonPayload = new Gson().toJson(jsonMap);
-        String response = fireHttpCallback(jsonPayload, getStepUpdateEndpoint(), 360, agentId);
-
-        if (response != null) {
-            Map<String, Object> responseMap = gson.fromJson(response, HashMap.class);
-            stepDeltaQ = ((Number) responseMap.get("deltaQ")).doubleValue();
-        } else {
-            stepDeltaQ = -1.0;
-        }
-
-        experience.recordTrip(currentModeUsed, currentStepMatsimScore, currentStepReward,  stepDeltaQ);
     }
 
-    public String fireHttpCallback(String jsonPayload, String endpoint, int timeoutSeconds, Id<Person> agentId) {
+    private List<Trip> getScheduledTrips(MobsimAgent agent){
+        Plan executedPlan = WithinDayAgentUtils.getModifiablePlan(agent);
+        List<Trip> trips = TripStructureUtils.getTrips(executedPlan);
+        return trips;
+    }
+
+    private Trip getCompletedTrip(MobsimAgent agent){
+        Trip completedTrip = null;
+
+        for (Trip trip : getScheduledTrips(agent)) {
+            // Match the trip whose destination is the current activity the agent just started
+            if (trip.getDestinationActivity().equals(WithinDayAgentUtils.getCurrentPlanElement(agent))) {
+                completedTrip = trip;
+                break;
+            }
+        }
+
+        return completedTrip;
+    }
+
+    private WithinDayRealTimeScoringEngine updateAndGetStepwiseScoringEngine(MobsimAgent agent, Activity previousActivity, String currentModeUsed){
+        double modeRetrievalTime = 0.0;
+        Id<Person> agentId = agent.getId();
+        Id<Link> previousLinkId = previousActivity.getLinkId();
+        Id<Link> currentLinkId = agent.getCurrentLinkId();
+        Trip completedTrip = getCompletedTrip(agent);
+
+        Map<String, Integer> modeDiscontinuityPenaltyMap = AgentAssetInventory.getModeDiscontinuityPenalty(agentId, previousLinkId);
+
+        System.out.println("The previous mode location at " + previousLinkId.toString() + " is: " + AgentAssetInventory.getModeLocation(agentId));
+
+        // --- UPDATING INVENTORY ---
+        AgentAssetInventory.updateModeLocation(agentId, currentLinkId, previousLinkId, currentModeUsed, modeDiscontinuityPenaltyMap);
+        System.out.println("The current mode location at " + currentLinkId.toString() + " is: " + AgentAssetInventory.getModeLocation(agentId));
+
+        int currentTripIndex = getScheduledTrips(agent).indexOf(completedTrip);
+        boolean isTour = AgentAssetInventory.getIsTourBased(agent.getId());
+
+        if (isTour) modeRetrievalTime = AgentAssetInventory.getModeRetrievalTimes(agent, this.scenario, currentTripIndex, this.log);
+
+        WithinDayRealTimeScoringEngine rewardCalculator = this.customObserver.tripEvaluationMetrics(
+            agent, currentModeUsed, completedTrip, modeRetrievalTime, modeDiscontinuityPenaltyMap
+        );
+
+        return rewardCalculator;
+    }
+
+    private String fireHttpCallback(String jsonPayload, String endpoint, int timeoutSeconds, Id<Person> agentId) {
         String response = communicationManager.httpPost(jsonPayload, endpoint, timeoutSeconds);
 
         if (response != null && !response.isEmpty()) {
@@ -307,6 +305,28 @@ public class CustomRLReplanner extends WithinDayReplanner {
         return null;
     }
 
+    private Object parseResponse(String response) {
+        Object parsedResponse = null;
+
+        if (response != null && !response.isBlank()) {
+            try {
+                Map<String, Object> resMap = gson.fromJson(response, HashMap.class);
+                if (resMap != null && resMap.containsKey("response")) {
+                    Object val = resMap.get("response");
+                    
+                    if (val instanceof Number) {
+                        parsedResponse = ((Number) val).doubleValue();
+                    } else if (val != null) {
+                        parsedResponse = val.toString();
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse JSON response: {}", response);
+            }
+        }
+        return parsedResponse;
+    }
+
     @Override
     public Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences() {
         return this.agentExperiences;
@@ -323,5 +343,7 @@ public class CustomRLReplanner extends WithinDayReplanner {
     public void reset(IterationEndsEvent event) {
         super.reset(event);
         AgentAssetInventory.reset();
+
+        fireHttpCallback("{}", "/reset-iteration-memory", 360, null);
     }
 }

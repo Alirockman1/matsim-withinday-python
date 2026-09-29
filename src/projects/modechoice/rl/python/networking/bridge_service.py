@@ -19,7 +19,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
         super().__init__()
         self.agent = None
         self.trip_memory: Dict[str, Any] = {}
-        self.daily_stats: Dict[str, Any] = {}
+        self.terminal = False
 
     def configure_session(self, config_data: Dict[str, Any]):
         """
@@ -57,8 +57,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
 
     def request_decision(self, observation: Any):
         """
-        Receives trip observation state, records memory, and selects
-        the agent's mode choice via the RL policy.
+        Receives trip observation state, initializes state representation, and selects the mode.
         """
         with self._lock:
             if not self.agent:
@@ -66,41 +65,91 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
 
             agent_id = observation.agentID
             state = prepare_state(observation, self.trip_memory)
-            self.agent.init_state(agent_id, state)
+
+            if not self.terminal:
+                self.agent.init_state(agent_id, state)
 
             chosen_mode = get_chosen_action(agent_id, self.agent, self.trip_memory)
             return str(chosen_mode)
 
     def process_feedback(self, feedback: Any):
         """
-        Calculates trip rewards upon trip arrival, updates the Q-table policy.
+        Records the reward and terminal status into the agent's trip memory.
         """
         with self._lock:
             if not self.agent:
                 raise RuntimeError("RL Agent has not been initialized.")
 
             agent_id = feedback.agentID
-            agent_memory = self.trip_memory.get(agent_id, None)
+            self.terminal = feedback.isTerminal
+            agent_trip_memory = self.trip_memory.get(agent_id, None)
 
-            if not agent_memory:
+            if not agent_trip_memory:
                 raise KeyError(f"No active memory record found for agent ID: '{agent_id}'")
 
             # Compute step reward and transition state
-            reward, next_state, termination = update_experience(feedback, self.agent, self.daily_stats)
+            update_reward(feedback, agent_trip_memory)
+
+    def call_update_policy(self, agent_id: str):
+        """
+        Triggers the Q-table policy update using the stored transition 
+        (previous_state -> previous_action -> reward -> next_state).
+        """
+        with self._lock:
+            if not self.agent:
+                raise RuntimeError("RL Agent has not been initialized.")
+
+            agent_trip_memory = self.trip_memory.get(agent_id, None)
+
+            if not agent_trip_memory:
+                raise KeyError(f"No active memory record found for agent ID: '{agent_id}'")
+
+            # Determine next state based on terminal flag
+            if self.terminal:
+                print("Terminal state here...")
+                previous_state = agent_trip_memory.get("state")
+                previous_action = agent_trip_memory.get("mode")
+                next_state = None
+            else:
+                previous_state = agent_trip_memory.get("previous_state", None)
+                previous_action = agent_trip_memory.get("previous_mode", None)
+                next_state = agent_trip_memory.get("state")
+
+            # Safely grab the latest reward from history
+            reward_history = agent_trip_memory.get("reward_history", [])
+            latest_reward = reward_history[-1] if reward_history else 0.0
+            print(latest_reward)
+            print(previous_state)
+            print(previous_action)
 
             # Update Q-table policy
-            self.agent.update_policy(
-                agent_id, 
-                agent_memory['state'], 
-                agent_memory['mode'], 
-                reward, 
-                next_state, 
-                print_tabel=False
-            )
+            if previous_state is not None and previous_action is not None:
+                print("here")
+                self.agent.update_policy(
+                    agent_id, 
+                    previous_state, 
+                    previous_action, 
+                    latest_reward, 
+                    next_state, 
+                    print_tabel=True
+                )
 
-            delta_q = float(getattr(self.agent, "delta_q", 0.0))
+            delta_q = float(getattr(self.agent, "delta_q", -999))
+            return {"response": delta_q}
+    
+    def reset(self):
+        """
+        Clears agent trip memory and active states at the end of an iteration.
+        """
+        with self._lock:
+            if hasattr(self, "trip_memory"):
+                self.trip_memory.clear()
+            # If you are using agent_memories or similar structures:
+            if hasattr(self, "agent_memories"):
+                self.agent_memories.clear()
+            self.terminal = False
             
-            return {"deltaQ": delta_q}
+            return {"status": "memory_cleared"}
 
     def checkpoint_state(self):
         """

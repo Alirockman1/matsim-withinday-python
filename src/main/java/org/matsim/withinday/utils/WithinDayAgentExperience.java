@@ -22,6 +22,11 @@ public class WithinDayAgentExperience {
     private double finalDayEndReward = 0.0;
     private double finalDayEndScore = 0.0;
 
+    // Pending Transition State Fields
+    private boolean hasPending = false;
+    private double pendingReward = 0.0;
+    private double pendingMatsimScore = 0.0;
+
     public WithinDayAgentExperience(Id<Person> agentId, WithinDayRealTimeScoringEngine scoringEngine) {
         this.agentId = agentId;
         this.scoringEngine = scoringEngine;
@@ -29,17 +34,39 @@ public class WithinDayAgentExperience {
 
     // --- Record-keeping methods ---
     
-    public void recordTrip(String mode, double score, double reward, double deltaQ) {
+    public void recordTrip(String mode, double score, double reward) {
         this.experiencedModes.add(mode);
         this.tripRewards.add(reward);
         this.tripScores.add(score);
-        this.stepDeltaQs.add(deltaQ);
-        this.accumulatedDeltaQ += deltaQ;
     }
 
     public void finalizeDay(double dayEndReward, double dayEndScore) {
         this.finalDayEndReward = dayEndReward;
         this.finalDayEndScore = dayEndScore;
+    }
+
+    // --- Pending Reward Management Methods ---
+
+    public void storePendingReward(double reward, double matsimScore) {
+        this.pendingReward = reward;
+        this.pendingMatsimScore = matsimScore;
+        this.hasPending = true;
+    }
+
+    public boolean hasPendingReward() {
+        return this.hasPending;
+    }
+
+    public void clearPendingReward() {
+        this.hasPending = false;
+        this.pendingReward = 0.0;
+        this.pendingMatsimScore = 0.0;
+    }
+
+    // --- Setters ---
+    public void setDeltaQ(double deltaQ){
+        this.stepDeltaQs.add(deltaQ);
+        this.accumulatedDeltaQ += deltaQ;
     }
 
     // --- Getters ---
@@ -53,4 +80,7 @@ public class WithinDayAgentExperience {
     public double getAccumulatedDeltaQ() { return accumulatedDeltaQ; }
     public double getFinalDayEndReward() { return finalDayEndReward; }
     public double getFinalDayEndScore() { return finalDayEndScore; }
+
+    public double getPendingReward() { return pendingReward; }
+    public double getPendingMatsimScore() { return pendingMatsimScore; }
 }

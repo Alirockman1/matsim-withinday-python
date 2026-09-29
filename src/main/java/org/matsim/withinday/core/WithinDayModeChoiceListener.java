@@ -93,7 +93,6 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
 
         // Initialize the tour based modes
         String[] tourBasedModes = AgentAssetInventory.getSimulationTourBasedModes().toArray(String[]::new);
-        System.out.println("Tour modes are: " + AgentAssetInventory.getSimulationTourBasedModesAsString());
         StateEngine.setModeAvailabilityLookup(tourBasedModes);
     }
 

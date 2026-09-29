@@ -67,7 +67,7 @@ public class CustomRLScoringEngine extends WithinDayRealTimeScoringEngine {
         CustomConfigGroup customConfigGroup = (CustomConfigGroup) this.localObserver.getCustomConfigGroup();
         double retrievalCostWeight = customConfigGroup.getModelWeights().getOrDefault("retrievalCostPenalty", 1.0);
 
-        return discontinuityPenalty + (retrievalCostWeight * retrievalPenalty);
+        return Math.abs(discontinuityPenalty + (retrievalCostWeight * retrievalPenalty));
     }
 
     /**
