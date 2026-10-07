@@ -9,6 +9,7 @@ import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.router.util.TravelTime;
+import org.matsim.withinday.core.AgentSelector;
 import org.matsim.withinday.core.RunWithinDay;
 import org.matsim.withinday.core.WithinDayModeChoiceListener;
 import org.matsim.withinday.core.WithinDayReplanner;
@@ -69,6 +70,9 @@ public class RunRLModeChoice extends RunWithinDay {
                 bind(CommunicationManager.class).to(UnixSocketCommunicationManager.class).asEagerSingleton();
                 addControllerListenerBinding().to(UnixSocketCommunicationManager.class);
 
+                // Selector
+                bind(AgentSelector.class).asEagerSingleton();
+                
                 // Observer & Replanner
                 bindDynamicClass(WithinDayObserver.class, observerClass, CustomRLObserver.class);
                 bindDynamicClass(WithinDayReplanner.class, replannerClass, CustomRLReplanner.class);
@@ -76,12 +80,6 @@ public class RunRLModeChoice extends RunWithinDay {
                 // Live access to MATSim's own scoring
                 bind(MatsimScoreTracker.class).asEagerSingleton();
                 addEventHandlerBinding().to(MatsimScoreTracker.class);
-
-                // Within-Day Travel Time (Tracks 'car' and 'rl' modes)
-                //WithinDayTravelTime travelTime = new WithinDayTravelTime(scenario, Set.of(REINFORCEMENT_MODE, TransportMode.car));
-                //bind(TravelTime.class).toInstance(travelTime);
-                //addEventHandlerBinding().toInstance(travelTime);
-                //addMobsimListenerBinding().toInstance(travelTime);
 
                 // Within-Day Mode Choice Listener
                 bind(WithinDayModeChoiceListener.class).asEagerSingleton();

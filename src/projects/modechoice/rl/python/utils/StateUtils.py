@@ -1,8 +1,6 @@
-def prepare_state(data, trip_memory):
-    agent_id = data.agentID
+def prepare_state(agent_id, data, trip_memory):
     feature_map = data.features
-
-    agent_trip_memory = trip_memory.get(data.agentID)
+    agent_trip_memory = trip_memory.get(agent_id)
 
     new_state = tuple(feature_map["rawBitStateRepresentation"])
 
@@ -35,7 +33,7 @@ def get_chosen_action(agent_id, agent, trip_memory):
     
     # Update the epsilon value for the iteration
     agent.decay_epsilon(iteration)
-    mode = agent.choose_action(agent_id, memory['state'], memory['available_modes'])
+    mode = agent.choose_action(memory['state'], memory['available_modes'])
 
     memory["mode"] = mode
     memory["action_history"].append(mode)

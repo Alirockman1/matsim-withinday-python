@@ -10,7 +10,7 @@ $NUM_THREADS = "4"
 $MEMORY = "12g"
 
 # Development Pipeline Toggles
-$AGENT_ID = "10047_1"
+$NUM_AGENTS_PER_ITERATION = "1"
 $UPDATE_JAR = $true
 $REBUILT_DOCKER = $true
 
@@ -46,17 +46,6 @@ Write-Host "=========================================" -ForegroundColor Cyan
 # Ensure runtime folders exist locally
 if (!(Test-Path $SHARED_STORAGE_DIR)) { New-Item -ItemType Directory -Path $SHARED_STORAGE_DIR | Out-Null }
 if (!(Test-Path $SCENARIO_OUTPUT_DIR)) { New-Item -ItemType Directory -Path $SCENARIO_OUTPUT_DIR | Out-Null }
-
-# 1. Dynamically update the config.xml agent list using regex
-$CONFIG_PATH = "$SCENARIO_INPUT_DIR\config.xml"
-if (Test-Path $CONFIG_PATH) {
-    Write-Host "Updating agent filter list in config.xml to: $AGENT_ID..." -ForegroundColor Yellow
-    $content = Get-Content $CONFIG_PATH
-    $content = $content -replace '(<param name="agentFilterList" value=")[^"]*("\/>)', "`$1${AGENT_ID}`$2"
-    Set-Content $CONFIG_PATH $content
-} else {
-    Write-Host "Warning: config.xml not found at $CONFIG_PATH, skipping config update." -ForegroundColor Red
-}
 
 # 2. Move execution context to base workspace
 Set-Location $BASE_WORKSPACE
@@ -100,9 +89,9 @@ if($REBUILT_DOCKER){
     Write-Host "Removing old Docker image [$IMAGE_TAG]..." -ForegroundColor Yellow
     wsl docker rmi $IMAGE_TAG -f 2>$null
 
-    Write-Host "Building new Docker image [$IMAGE_TAG] using Dockerfile_compressed.txt..." -ForegroundColor Yellow
+    Write-Host "Building new Docker image [$IMAGE_TAG] using Dockerfile.txt..." -ForegroundColor Yellow
     # 🌟 -f points to your custom layer file, and -t applies the dynamic tag
-    wsl docker build -f "$WSL_WORKSPACE/Dockerfile_compressed.txt" -t $IMAGE_TAG $WSL_WORKSPACE
+    wsl docker build -f "$WSL_WORKSPACE/Dockerfile.txt" -t $IMAGE_TAG $WSL_WORKSPACE
     #docker build -f .\Dockerfile -t $IMAGE_TAG .
 }
 
@@ -113,6 +102,7 @@ if($REBUILT_DOCKER){
 Write-Host "Launching containerized simulation environment..." -ForegroundColor Green
 wsl docker run --rm -it `
     -e OBJECTIVE="$OBJECTIVE" `
+    -e AGENTS_PER_ITERATION="$NUM_AGENTS_PER_ITERATION" `
     -e MATSIM_OUTPUT_BASE="/app/scenarios/${SCENARIO_NAME}/output" `
     -e MATSIM_ITERATION="$MATSIM_ITERATION" `
     -e MAX_TRAINING_ITERATION="$MAX_TRAINING_ITERATION" `

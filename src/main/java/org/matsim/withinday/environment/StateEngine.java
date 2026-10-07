@@ -25,7 +25,12 @@ public class StateEngine{
     private static Double maxRadius;
     public static int currentIteration = 0;
 
-    // SETTER: This method computes the centroid of the network
+    /**
+     * Computes the geometric centroid, bounding box, and maximum radius 
+     * of the provided simulation network.
+     *
+     * @param network The MATSim network instance.
+     */
     public static void setNetworkCentroid(Network network) {
         double[] box = NetworkUtils.getBoundingBox(network.getNodes().values());
         double centerX = (box[0] + box[2]) / 2.0;
@@ -41,16 +46,27 @@ public class StateEngine{
 
     }
 
-    public static void setCustomTimeBinLookup(NavigableMap<Double, Integer> lookup) {
-        TIME_BIN_LOOKUP = new TreeMap<>(lookup);
-    }
+    /**
+     * Sets a custom time bin lookup structure for demand-based time discretization.
+     *
+     * @param lookup A NavigableMap mapping time thresholds to bin indices.
+     */
+    public static void setCustomTimeBinLookup(NavigableMap<Double, Integer> lookup) {TIME_BIN_LOOKUP = new TreeMap<>(lookup);}
 
-    public static void setModeAvailabilityLookup(String[] tourBasedModes) {
-        MODE_AVAILABILITY_MAP = buildModeAvailabilityLookup(tourBasedModes);
-    }
+    /**
+     * Initializes the mode availability lookup map based on a given array of tour-based modes.
+     *
+     * @param tourBasedModes Array of available tour-based transport modes.
+     */
+    public static void setModeAvailabilityLookup(String[] tourBasedModes) {MODE_AVAILABILITY_MAP = buildModeAvailabilityLookup(tourBasedModes);}
 
+    /**
+     * Extracts spatial location details and environment metadata for a given activity.
+     *
+     * @param activity The activity whose location is being evaluated.
+     * @return A map containing coordinates, environment bounds, and network origin reference.
+     */
     public static Map<String, Object> getActivityLocation(Activity activity){
-
         Map<String, Object> location = new HashMap<>();
         
         Coord currentActivityLocationCoordinates = activity.getCoord();
@@ -65,12 +81,16 @@ public class StateEngine{
         return location;
     }
 
-    // GETTER: This method returns the predicted departure time
+    /**
+     * Predicts the departure time for an activity based on its defined end time 
+     * or maximum duration relative to the arrival time.
+     *
+     * @param activity    The activity in question.
+     * @param arrivalTime The simulation timestamp of the agent's arrival at the activity.
+     * @return An OptionalTime representing the predicted departure time.
+     */
     public static OptionalTime getPredictedDepartureTime(Activity activity, double arrivalTime){
-    
-        if (activity.getEndTime().isDefined()) {
-            return activity.getEndTime();
-        }
+        if (activity.getEndTime().isDefined()) {return activity.getEndTime();}
         
         if (activity.getMaximumDuration().isDefined()) {
             double maxDuration = activity.getMaximumDuration().seconds();
@@ -80,8 +100,15 @@ public class StateEngine{
         return OptionalTime.defined(0);
     }
 
+    /**
+     * Evaluates the asset state on hand for an agent at a given link based on mode discontinuity penalties.
+     *
+     * @param agentId        The ID of the agent.
+     * @param currentLinkId  The current link ID where the agent is located.
+     * @param tourBasedModes Array of tour-based modes to check availability for.
+     * @return An integer representing the encoded asset state combination.
+     */
     public static int getAssetStateOnHand(Id<Person> agentId, Id<Link> currentLinkId, String[] tourBasedModes) {
-        
         Map<String, Integer> penaltyMap = AgentAssetInventory.getModeDiscontinuityPenalty(agentId, currentLinkId);
 
         Set<String> availableAssetModes = new HashSet<>();
@@ -94,6 +121,12 @@ public class StateEngine{
         return MODE_AVAILABILITY_MAP.getOrDefault(availableAssetModes, 0);
     }
 
+    /**
+     * Returns the total number of time bins for a given discretization method.
+     *
+     * @param method The time discretization method name (e.g., "demand_based", "hourly", "half_hourly", "quarter_hourly").
+     * @return The total bin size count.
+     */
     public static int getTimeBinSize(String method) {
         switch (method.toLowerCase()) {
             case "demand_based": return TIME_BIN_LOOKUP.size() + 1;
@@ -106,10 +139,32 @@ public class StateEngine{
         }
     }
 
-    public static int getAssetBinSize(){
-        return MODE_AVAILABILITY_MAP.size();
+    /**
+     * Returns the total number of unique asset state bins.
+     *
+     * @return The size of the mode availability map.
+     */
+    public static int getAssetBinSize() {return MODE_AVAILABILITY_MAP.size();}
+
+    /**
+     * Calculates the required bit width to represent a maximum integer value.
+     *
+     * @param maxValue The maximum possible value.
+     * @return The number of bits required.
+     */
+    public static int getBitWidth(int maxValue) {
+        if (maxValue <= 1) return 1;
+        return Integer.SIZE - Integer.numberOfLeadingZeros(maxValue - 1);
     }
 
+    /**
+     * Discretizes a continuous timestamp in seconds into a 0-indexed time bin integer 
+     * according to the specified discretization method.
+     *
+     * @param timeInSeconds The simulation time in seconds.
+     * @param method        The discretization method name.
+     * @return The corresponding discrete time bin index.
+     */
     public static int discretizeTimeFromContinous(double timeInSeconds, String method) {
         if ("demand_based".equalsIgnoreCase(method)) {
             if (TIME_BIN_LOOKUP == null || TIME_BIN_LOOKUP.isEmpty()) return 0;
@@ -127,6 +182,14 @@ public class StateEngine{
         }
     }
 
+    /**
+     * Discretizes continuous spatial coordinates into a grid cell position given a grid resolution size.
+     *
+     * @param xCoordinate The x-coordinate.
+     * @param yCoordinate The y-coordinate.
+     * @param gridSize    The resolution size of one side of the grid (e.g., 8 for an 8x8 grid).
+     * @return A GridPosition record containing column, row, cell index, and total shape.
+     */
     public static GridPosition discretizePositionFromContinuous(double xCoordinate, double yCoordinate, int gridSize) {
         int gridShape = gridSize * gridSize;
         double width = environmentMap[2] - environmentMap[0];
@@ -140,11 +203,6 @@ public class StateEngine{
         int cellIndex = (gridRow * gridSize) + gridColumn;
 
         return new GridPosition(gridColumn, gridRow, cellIndex, gridShape);
-    }
-
-    public static int getBitWidth(int maxValue) {
-        if (maxValue <= 1) return 1;
-        return Integer.SIZE - Integer.numberOfLeadingZeros(maxValue - 1);
     }
 
     /**
@@ -170,6 +228,7 @@ public class StateEngine{
     /**
      * Creates a one-hot bit array of size totalGridCells with exactly one bit set to 1 
      * at the agents position.
+     * 
      * @param cellIndex      The target 0-based cell index to activate.
      * @param totalGridCells The total size of the grid array (e.g., 64 for an 8x8 grid).
      * @return An integer array of size totalGridCells containing a single 1 at cellIndex.
@@ -188,9 +247,14 @@ public class StateEngine{
         return bitArray;
     }
 
+    /**
+     * Helper method to build all possible mode availability combinations and map them to bitmask integers.
+     *
+     * @param tourBasedModes Array of tour-based transport modes.
+     * @return A map linking each unique combination set of available modes to its integer mask.
+     */
     private static Map<Set<String>, Integer> buildModeAvailabilityLookup(String[] tourBasedModes) {
         Map<Set<String>, Integer> lookup = new HashMap<>();
-
         int combinationCount = 1 << tourBasedModes.length;
 
         for (int mask = 0; mask < combinationCount; mask++) {
@@ -209,8 +273,10 @@ public class StateEngine{
     }
 
     /**
-     * Classify continuous age numbers into discrete cohorts.
-     * @param agentAge the age of the filtered person.
+     * Classifies continuous agent age numbers into discrete cohorts.
+     *
+     * @param agentAge The age object of the person (can be Number or String).
+     * @return An integer representing the discrete age cohort.
      */
     public static int discretizeAgeAttribute(Object agentAge) {
         if (agentAge == null) return 0;
@@ -233,5 +299,13 @@ public class StateEngine{
         return 5;                     // Cohort 5: Retirement
     }
 
+    /**
+     * Record representing a discrete 2D grid position and index mapping.
+     *
+     * @param column    The grid column index.
+     * @param row       The grid row index.
+     * @param cellIndex The flattened 1D cell index.
+     * @param gridShape The total number of cells in the grid.
+     */
     public record GridPosition(int column, int row, int cellIndex, int gridShape) {}
 }

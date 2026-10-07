@@ -55,7 +55,8 @@ public class CustomRLReplanner extends WithinDayReplanner {
      */
     @Inject
     public CustomRLReplanner(Scenario scenario, TripRouter router, TimeInterpretation timeInterpretation,
-                              WithinDayObserver customObserver, CommunicationManager pythonCommunicationManager, CustomConfigGroup customConfigGroup) {
+                              WithinDayObserver customObserver, CommunicationManager pythonCommunicationManager, 
+                              CustomConfigGroup customConfigGroup) {
         super(scenario, router, timeInterpretation, customObserver, pythonCommunicationManager);
         this.customConfigGroup = customConfigGroup;
     }
@@ -78,18 +79,17 @@ public class CustomRLReplanner extends WithinDayReplanner {
         jsonMap.put("epsilonDecay", customConfigGroup.getEpsilonDecay());
         jsonMap.put("epsilonMinimum", customConfigGroup.getEpsilonMinimum());
         jsonMap.put("trainingCutoffIteration", customConfigGroup.getTrainingCutoffIteration());
-        jsonMap.put("outputDirectory", scenario.getConfig().controller().getOutputDirectory());
+        //jsonMap.put("outputDirectory", scenario.getConfig().controller().getOutputDirectory());
         jsonMap.put("modes", AgentAssetInventory.getSimulationModesAsString());
         jsonMap.put("tourBasedModes", AgentAssetInventory.getSimulationTourBasedModesAsString());
         jsonMap.put("outputDirectory", absoluteOutputDirectory);
-        jsonMap.put("saveInterval", customConfigGroup.getSaveInterval());
         jsonMap.put("modelFileName", fullPath.getAbsolutePath());
 
-        communicationManager.httpPost(gson.toJson(jsonMap), "/session/configure", 30);
+        communicationManager.httpPost(gson.toJson(jsonMap), "/session/configure", 30, null);
     }
 
     @Override
-    protected Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation) {
+    protected Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation) {        
         Map<String, Object> payload = new HashMap<>();
         Plan modifiablePlan = WithinDayAgentUtils.getModifiablePlan(agent);
         Id<Person> agentId = agent.getId();
@@ -109,25 +109,28 @@ public class CustomRLReplanner extends WithinDayReplanner {
         String jsonStateObservationPayload = gson.toJson(stateObservation);
 
         // Transmit state payload and query the external decision model endpoint via HTTP POST
-        String rawModeResponse = fireHttpCallback(jsonStateObservationPayload, getDecisionEndpoint(), 360, agentId);
+        String rawModeResponse = fireHttpCallback(jsonStateObservationPayload, communicationManager.getDecisionEndpoint(), 360, agentId);
         String chosenMode = (String) parseResponse(rawModeResponse);
         if (chosenMode==null){
             chosenMode = "pedestrian";
         }
 
-        log.info("RL MODE CHOICE: Assigned mode '{}' to agent {}", chosenMode.toUpperCase(), agentId.toString());
+        log.info("RL MODE CHOICE: Assigned mode '{}' to agent {}", chosenMode.toUpperCase(), agentId);
 
         // Update agent's executed plan in memory
         List<? extends PlanElement> newNextTrip = editTrips.replanFutureTrip(nextTrip, modifiablePlan, 
             chosenMode, agent.getActivityEndTime());
 
         // Update the Q values based on agent experience
-        String updateResponse = fireHttpCallback(jsonStateObservationPayload, "/policy/update", 360, agentId);
+        System.out.println(isTrainingIteration((int) stateObservation.get("simulationIteration")));
 
-        Double deltaQ = (Double) parseResponse(updateResponse);
+        if (isTrainingIteration((int) stateObservation.get("simulationIteration"))){
+            String updateResponse = fireHttpCallback(jsonStateObservationPayload, "/policy/update", 360, agentId);
+            Double deltaQ = (Double) parseResponse(updateResponse);
         
-        if (deltaQ==null)deltaQ = 0.0;
-        experience.setDeltaQ(deltaQ);
+            if (deltaQ==null) deltaQ = 0.0;
+            experience.setDeltaQ(deltaQ);
+        }
 
         Map<String, Object> result = new HashMap<>();
         result.put("mode", chosenMode);
@@ -175,7 +178,6 @@ public class CustomRLReplanner extends WithinDayReplanner {
         WithinDayRealTimeScoringEngine rewardCalculator = updateAndGetStepwiseScoringEngine(agent, previousActivity, currentModeUsed);
         double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
         double currentStepReward = rewardCalculator.getCurrentStepReward();
-        System.out.println("Temporary Logs: The current step matsim score is " + currentStepMatsimScore);
 
         WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
             agentId, 
@@ -196,17 +198,19 @@ public class CustomRLReplanner extends WithinDayReplanner {
         payload.put("isTerminal", isEndOfDay);
 
         String jsonPayload = gson.toJson(payload);
-        fireHttpCallback(jsonPayload, getRewardFeedbackEndpoint(), 360, agentId);
+        fireHttpCallback(jsonPayload, communicationManager.getRewardFeedbackEndpoint(), 360, agentId);
 
         if (isEndOfDay) {
-            String updateResponse = fireHttpCallback(jsonPayload, "/policy/update", 360, agentId);
-            System.out.println(updateResponse);
-            Double deltaQ = (Double) parseResponse(updateResponse);
-            
-            if (deltaQ==null)deltaQ = 0.0;
-            experience.setDeltaQ(deltaQ);
+            if (isTrainingIteration((int) nextState.get("simulationIteration"))){
+                String updateResponse = fireHttpCallback(jsonPayload, "/policy/update", 360, agentId);
+                System.out.println(updateResponse);
+                Double deltaQ = (Double) parseResponse(updateResponse);
+                
+                if (deltaQ==null)deltaQ = 0.0;
+                experience.setDeltaQ(deltaQ);
 
-            System.out.println("RL MODE CHOICE: The policy updated successfully at the last leg with a delta Q of " + deltaQ);
+                System.out.println("RL MODE CHOICE: The policy updated successfully at the last leg with a delta Q of " + deltaQ);
+            }
             
             customObserver.finalizeDay(agent, completedTrip.getDestinationActivity(), simulationTime);
 
@@ -269,14 +273,21 @@ public class CustomRLReplanner extends WithinDayReplanner {
     }
 
     private String fireHttpCallback(String jsonPayload, String endpoint, int timeoutSeconds, Id<Person> agentId) {
-        String response = communicationManager.httpPost(jsonPayload, endpoint, timeoutSeconds);
+        
+        String agentIdString = null;
+
+        if (agentId != null){
+            agentIdString = agentId.toString();
+        }
+        
+        String response = communicationManager.httpPost(jsonPayload, endpoint, timeoutSeconds, agentIdString);
 
         if (response != null && !response.isEmpty()) {
             String trimmed = response.trim();
             
             // Safety check: If the response is a plain string instead of a JSON object, handle it or wrap it
             if (!trimmed.startsWith("{")) {
-                log.warn("COMMUNICATION NET: Received non-object response from {} for agent {}: {}", endpoint, agentId, response);
+                log.warn("COMMUNICATION NET: Received non-object response from {} for agent {}: {}", endpoint, agentIdString, response);
                 return response; 
             }
 
@@ -284,22 +295,22 @@ public class CustomRLReplanner extends WithinDayReplanner {
                 Map<String, Object> responseMap = gson.fromJson(response, HashMap.class);
 
                 if (responseMap == null) {
-                    log.error("COMMUNICATION NET: Parsed response map was null for agent {}", agentId);
+                    log.error("COMMUNICATION NET: Parsed response map was null for agent {}", agentIdString);
                     return null;
                 }
 
                 if (responseMap.containsKey("error")) {
-                    log.error("COMMUNICATION NET: Backend error response for agent {}: {}", agentId, responseMap.get("error"));
+                    log.error("COMMUNICATION NET: Backend error response for agent {}: {}", agentIdString, responseMap.get("error"));
                     return null;
                 }
 
                 return response; 
 
             } catch (Exception ex) {
-                log.error("Failed to parse response JSON for agent {}: {}. Raw response was: {}", agentId, ex.getMessage(), response);
+                log.error("Failed to parse response JSON for agent {}: {}. Raw response was: {}", agentIdString, ex.getMessage(), response);
             }
         } else {
-            log.error("COMMUNICATION NET: Null or empty response received from {} for agent {}", endpoint, agentId);
+            log.error("COMMUNICATION NET: Null or empty response received from {} for agent {}", endpoint, agentIdString);
         }
 
         return null;
@@ -328,9 +339,24 @@ public class CustomRLReplanner extends WithinDayReplanner {
     }
 
     @Override
-    public Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences() {
-        return this.agentExperiences;
+    protected boolean isTrainingIteration(int iteration){
+        int maxTrainingIteration = this.customConfigGroup.getTrainingCutoffIteration();
+        int validationInterval = this.customConfigGroup.getValidationInterval();
+
+        if (iteration <= maxTrainingIteration && (iteration % validationInterval != 0 || iteration == 0)){return true;}
+        return false;
     }
+
+    @Override
+    protected boolean isCheckpointInterval(int iteration){
+        int checkpointInterval = this.customConfigGroup.getSaveInterval();
+
+        if (isTrainingIteration(iteration) && iteration % checkpointInterval == 0){return true;}
+        return false;
+    }
+
+    @Override
+    public Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences() {return this.agentExperiences;}
 
     @Override
     protected void handleIterationReporting(IterationEndsEvent event) {
@@ -343,7 +369,12 @@ public class CustomRLReplanner extends WithinDayReplanner {
     public void reset(IterationEndsEvent event) {
         super.reset(event);
         AgentAssetInventory.reset();
+        int iteration = event.getIteration();
 
-        fireHttpCallback("{}", "/reset-iteration-memory", 360, null);
+        if (isCheckpointInterval(iteration)){
+            fireHttpCallback("{}", communicationManager.getSaveEndPoint(iteration), 360, null);          
+        }
+
+        fireHttpCallback("{}", communicationManager.getIterationResetEndPoint(), 360, null);
     }
 }

@@ -76,10 +76,30 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
     }
 
     /**
+     * Retrieve the active scoring function for an agent if their day is not yet finished.
+     *
+     * @param agentId The ID of the agent.
+     * @return The active ScoringFunction instance, or null if finished or untracked.
+     */
+    private ScoringFunction getActiveScoringFunction(Id<Person> agentId) {return this.finishedAgents.contains(agentId) ? null : this.scoringFunctions.get(agentId);}
+
+    /**
+     * Retrieve the current accumulated MATSim score for a tracked agent without consuming 
+     * scores or closing their day.
+     *
+     * @param agentId The ID of the agent.
+     * @return The current accumulated score, or Double.NaN if untracked.
+     */
+    public double getDayScore(Id<Person> agentId) {
+        ScoringFunction scoringFunction = this.scoringFunctions.get(agentId);
+        return scoringFunction != null ? scoringFunction.getScore() : Double.NaN;
+    }
+
+    /**
      * Builds a fresh scoring function for every agent to be tracked in the upcoming iteration.
      * Called once per iteration, before the mobsim starts.
      *
-     * @param trackedAgents Collection of agent IDs being actively monitored in the current iteration.
+     * @param trackedAgents Collection of agent IDs {@code Id<Person>} being actively monitored in the current iteration.
      */
     public void beginIteration(Collection<Id<Person>> trackedAgents) {
         this.scoringFunctions.clear();
@@ -157,18 +177,6 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
         this.lastReadScore.put(agentId, dayScore);
 
         return dayScore;
-    }
-
-    /**
-     * Fetches the current accumulated MATSim score for a tracked agent without consuming 
-     * scores or closing their day.
-     *
-     * @param agentId The ID of the agent.
-     * @return The current accumulated score, or Double.NaN if untracked.
-     */
-    public double getDayScore(Id<Person> agentId) {
-        ScoringFunction scoringFunction = this.scoringFunctions.get(agentId);
-        return scoringFunction != null ? scoringFunction.getScore() : Double.NaN;
     }
 
     /**
@@ -283,17 +291,6 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
         }
     }
 
-    /**
-     * Helper to retrieve the active scoring function for an agent if their day is not yet finished.
-     *
-     * @param agentId The ID of the agent.
-     * @return The active ScoringFunction instance, or null if finished or untracked.
-     */
-    private ScoringFunction getActiveScoringFunction(Id<Person> agentId) {
-        return this.finishedAgents.contains(agentId) ? null : this.scoringFunctions.get(agentId);
-    }
-
     @Override
-    public void reset(int iteration) {
-    }
+    public void reset(int iteration) {}
 }

@@ -13,9 +13,17 @@ class RandomBridgeService(BaseSimulationBridgeService):
 
     def __init__(self):
         super().__init__()
-        self.agent = None
-        self.trip_memory: Dict[str, Any] = {}
-        self.daily_stats: Dict[str, Any] = {}
+        self.agents: Dict[int, Agent] = {}
+
+    def _get_or_create_agent(self, agent_tag: int) -> Agent:
+        """
+        Retrieves an existing agent instance for the given agent tag,
+        or creates a new one if it doesn't exist yet.
+        """
+        if agent_tag not in self.agents:
+            # Instantiate with the unique ID and session config dictionary
+            self.agents[agent_tag] = Agent(agent_tag)     
+        return self.agents[agent_tag]  
 
     def configure_session(self, config_data: Dict[str, Any]):
         """
@@ -25,27 +33,24 @@ class RandomBridgeService(BaseSimulationBridgeService):
         with self._lock:
             self.session_config = config_data
 
-            # Instantiate Agent
-            self.agent = Agent(random_seed=config_data.get("randomSeed"))
+            # Update class global parameter
+            Agent.configure_global_parameters(config_data)
 
             logger.info("Random model for the WithinDayReplanner initialized.")
             return {"status": "Agent Initialized"}
 
-    def request_decision(self, observation: Any):
+    def request_decision(self, agent_tag: int, observation: Any):
         """
         Receives trip observation state, records memory, and selects
         the agent's mode choice via trhe random model.
         """
         with self._lock:
-            if not self.agent:
-                raise RuntimeError("Agent has not been initialized.")
+            agent = self._get_or_create_agent(agent_tag)
 
-            agent_id = observation.agentID
+            if agent_tag not in self.trip_memory or not self.trip_memory[agent_tag]:
+                initiate_memory(agent_tag, observation, self.trip_memory)
 
-            if agent_id not in self.trip_memory or not self.trip_memory[agent_id]:
-                initiate_memory(observation, self.trip_memory)
-
-            chosen_mode = get_chosen_action(agent_id, self.agent, self.trip_memory)
+            chosen_mode = get_chosen_action(agent_tag, agent, self.trip_memory)
             return str(chosen_mode)
 
     def checkpoint_state(self) -> bool:

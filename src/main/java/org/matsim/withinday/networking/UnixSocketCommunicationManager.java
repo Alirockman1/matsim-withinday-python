@@ -2,15 +2,19 @@ package org.matsim.withinday.networking;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
 import org.matsim.core.controler.events.ShutdownEvent;
 import org.matsim.core.controler.events.StartupEvent;
+import org.matsim.withinday.core.AgentSelector;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
+import java.net.URI;
 import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
@@ -29,7 +33,7 @@ import java.nio.file.Path;
 public class UnixSocketCommunicationManager extends CommunicationManager {
 
     private static final Logger log = LogManager.getLogger(UnixSocketCommunicationManager.class);
-
+    private final AgentSelector agentSelector;
     private final Path socketPath;
     private Process pythonProcess;
     
@@ -42,8 +46,11 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
      * Initializes the Unix Domain Socket communication manager and guarantees 
      * the creation of the target directory for the socket file.
      */
-    public UnixSocketCommunicationManager() {
-        super();
+    @Inject
+    public UnixSocketCommunicationManager(AgentSelector agentSelector) {
+        super(agentSelector);
+        this.agentSelector = agentSelector;
+        
         this.socketPath = Path.of("/app/temp", "matsim_rl.sock");
 
         try {
@@ -160,7 +167,7 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
     private boolean waitForPython() {
         for (int i = 0; i < 30; i++) {
             if (Files.exists(socketPath)) {
-                String response = httpGet("/healthz", 1);
+                String response = httpGet("/healthz", 1, null);
                 if (response != null && !response.isEmpty()) {
                     return true;
                 }
@@ -174,14 +181,15 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
     /**
      * Transmits a JSON text payload over the persistent socket channel using HTTP POST.
      *
-     * @param json        The JSON formatted string representation of the payload.
-     * @param requestName The target endpoint URI path (e.g., "/observe").
-     * @param timeout     Maximum socket operation timeout in milliseconds.
+     * @param json          The JSON formatted string representation of the payload.
+     * @param requestName   The target endpoint URI path (e.g., "/observe").
+     * @param timeout       Maximum socket operation timeout in milliseconds.
+     * @param agentIdString The ID of the agent requesting the communication end point
      * @return Raw string response body returned by the Python endpoint, or null on failure.
      */
     @Override
-    public synchronized String httpPost(String json, String requestName, long timeout) {
-        return sendPayload(json.getBytes(StandardCharsets.UTF_8), "application/json; charset=UTF-8", requestName);
+    public synchronized String httpPost(String json, String requestName, long timeout, String agentIdString) {
+        return sendPayload(json.getBytes(StandardCharsets.UTF_8), "application/json; charset=UTF-8", requestName, agentIdString);
     }
 
     /**
@@ -191,8 +199,8 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
      * @param requestName   The target endpoint URI path (e.g., "/observe").
      * @return Raw string response body returned by the Python endpoint, or null on failure.
      */
-    public synchronized String httpPostBytes(byte[] binaryPayload, String requestName) {
-        return sendPayload(binaryPayload, "application/x-msgpack", requestName);
+    public synchronized String httpPostBytes(byte[] binaryPayload, String requestName, String agentIdString) {
+        return sendPayload(binaryPayload, "application/x-msgpack", requestName, agentIdString);
     }
 
     /**
@@ -203,13 +211,13 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
      * @return Raw string response body returned by the Python endpoint, or null on failure.
      */
     @Override
-    public synchronized String httpGet(String requestName, long timeout) {
-        String endpoint = requestName.startsWith("/") ? requestName : "/" + requestName;
+    public synchronized String httpGet(String requestName, long timeout, String agentIdString) {
+        URI URI = formatUrl(requestName, agentIdString);
 
         try {
             SocketChannel channel = getChannel();
 
-            String rawHttpRequest = "GET " + endpoint + " HTTP/1.1\r\n" +
+            String rawHttpRequest = "GET " + URI.toString() + " HTTP/1.1\r\n" +
                     "Host: localhost\r\n" +
                     "Connection: keep-alive\r\n\r\n";
 
@@ -238,13 +246,16 @@ public class UnixSocketCommunicationManager extends CommunicationManager {
      * @param requestName Target endpoint path.
      * @return Raw decoded string response body.
      */
-    private String sendPayload(byte[] bodyBytes, String contentType, String requestName) {
-        String endpoint = requestName.startsWith("/") ? requestName : "/" + requestName;
+    private String sendPayload(byte[] bodyBytes, String contentType, String requestName, String agentIdString) {
+        System.out.println("INFO UnixSocketCommunicationManager: The agent id is {" + agentIdString + "}.");
+        URI URI = formatUrl(requestName, agentIdString);
 
         try {
             SocketChannel channel = getChannel();
 
-            String rawHttpRequest = "POST " + endpoint + " HTTP/1.1\r\n" +
+            System.out.println("INFO UnixSocketCommunicationManager: The URI is {" + URI + "}.");
+
+            String rawHttpRequest = "POST " + URI.toString() + " HTTP/1.1\r\n" +
                     "Host: localhost\r\n" +
                     "Content-Type: " + contentType + "\r\n" +
                     "Content-Length: " + bodyBytes.length + "\r\n" +

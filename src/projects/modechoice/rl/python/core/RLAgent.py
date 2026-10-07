@@ -5,159 +5,155 @@ import os
 class DecentralizedQLearningAgent:
 
     RANDOM_SEED = 42
-
-    def __init__(self, mode_list, alpha, gamma, initial_epsilon, epsilon_decay, epsilon_minimum, max_iteration=100):
-        self._alpha = alpha                            # Learning rate
-        self._gamma = gamma                            # Discount factor
-        self._initial_epsilon = initial_epsilon        # Epsilon-greedy factor
-        self._epsilon_min = epsilon_minimum
-        self._epsilon_decay = epsilon_decay
-        self._model_file = "model.pkl"
-        self.max_training_iteration = max_iteration
-        self.modes = mode_list
-        
-        # Initialize an empty Q-Table
-        self._q_table = {}
-
-        random.seed(self.RANDOM_SEED)
-
-    @property
-    def q_table(self):
-        return self._q_table
+    _alpha = 0.1
+    _gamma = 0.9
+    _initial_epsilon = 1.0
+    _epsilon_min = 0.01
+    _epsilon_decay = 0.99
+    _output_directory = ""
+    _file_path = ""
+    max_training_iteration = 100
+    _modes = []
     
-    @property
-    def modes(self):
-        return self._modes
+    @classmethod
+    def configure_global_parameters(cls, config_args: dict):
+        """
+        Dynamically configures class-level shared parameters from any arbitrary dictionary 
+        passed by MATSim/Java, without needing to know every key ahead of time.
+        """
+        config = config_args or {}
 
-    @modes.setter
-    def modes(self, modes_list):
-        self._modes = modes_list
+        # Extract known parameters safely with default fallbacks
+        cls._alpha = float(config.get("alpha", cls._alpha))
+        cls._gamma = float(config.get("gamma", cls._gamma))
+        cls._initial_epsilon = float(config.get("epsilon", cls._initial_epsilon))
+        cls._epsilon_min = float(config.get("epsilonMinimum", cls._epsilon_min))
+        cls._epsilon_decay = float(config.get("epsilonDecay", cls._epsilon_decay))
+        cls.max_training_iteration = int(config.get("trainingCutoffIteration", cls.max_training_iteration))
+        cls._output_directory = str(config_args.get("outputDirectory"))
+        
+        # Parse available modes globally
+        mode_string = config.get("modes", "")
+        if isinstance(mode_string, str):
+            cls._modes = [m.strip() for m in mode_string.split(",") if m.strip()]
+        else:
+            cls._modes = list(mode_string)
 
-    @property
-    def file_path(self):
-        return self._file_path
+        random.seed(cls.RANDOM_SEED)
 
-    @file_path.setter
-    def file_path(self, path):
-        self._file_path = path
+    @classmethod
+    def get_epsilon(cls):
+        return cls._epsilon
+
+    @classmethod
+    def set_epsilon(cls, value):
+        cls._epsilon = float(value)
+
+    @classmethod
+    def get_file_path(cls):
+        return cls._file_path
+
+    @classmethod
+    def set_file_path(cls, path):
+        cls._file_path = path
+
+    @classmethod
+    def get_modes(cls):
+        return cls._modes
+
+
+    def __init__(self, unique_id, args={}):
+        """Initializes a unique instance for a specific ID."""
+        self._id = unique_id
+        self._q_table = {}
+        self._current_iteration = 0
+        self._delta_q = 0.0
+        self._epsilon = self._initial_epsilon
+        self._terminal = False
+
+        for key, value in args.items():
+            setattr(self, key, value)
 
     @property
     def q_table(self):
         return self._q_table
+
+    @property
+    def id(self):
+        return self._id
     
     @property
     def delta_q(self):
         return self._delta_q
     
     @property
-    def epsilon(self):
-        return self._epsilon
+    def terminal(self):
+        return self._terminal
 
+    @terminal.setter
+    def terminal(self, isterminal):
+        self._terminal = isterminal
 
-    def init_state(self, agent_id, state_tuple):
-        ''' Initializes the state and action pair in the Q-table. '''
+    def init_state(self, state_tuple):
+        ''' Initializes the state and action pair in this agent's Q-table. '''
 
-        if agent_id not in self._q_table:
-            self._q_table[agent_id] = {}
-
-        if state_tuple not in self._q_table[agent_id]:
+        if state_tuple not in self._q_table:
             # Initialize all possible modes
-            self._q_table[agent_id][state_tuple] = {mode: 600.0 for mode in self.modes}
-
-    def save_q_table(self):
-        ''' Saves the Q-table to a file using pickle '''
-
-        try:
-            with open(self._file_path, 'wb') as f:
-                pickle.dump(self._q_table, f)
-            print(f"PYTHON SERVICE: Q-Table successfully saved to {self._file_path}.")
-        except Exception as e:
-            print(f"PYTHON SERVICE: Failed to save Q-Table: {e}.")
-
-    def load_models(self, load_file_path):
-        ''' Loads decentralized tables from file. '''
-        if os.path.exists(load_file_path):
-            try:
-                with open(load_file_path, 'rb') as f:
-                    self._agent_tables = pickle.load(f)
-                print(f"PYTHON SERVICE: Loaded tables for {len(self._agent_tables)} unique agents.")
-            except Exception as e:
-                print(f"PYTHON SERVICE: Failed to load: {e}.")
-        else:
-            print("PYTHON SERVICE: No model found. Starting decentralized training fresh.")
+            self._q_table[state_tuple] = {mode: 600.0 for mode in self._modes}
 
     def decay_epsilon(self, iteration):
-        ''' Updates the epsilon value for the current iteration. ''' 
+        ''' Updates the epsilon value for the current iteration. '''
+        self._current_iteration = iteration 
         self._epsilon = max(self._epsilon_min, self._initial_epsilon * (self._epsilon_decay ** iteration))
-        self._current_iteration = iteration
         
-    def choose_action(self, agent_id, state, available_modes):
-        ''' Epsilon-Greedy selection for mode choices. ''' 
-        
-        agent_q_table = self._q_table[agent_id]
-
-        # Get the greedy epsilon value
-        current_epsilon = self._epsilon
-        current_iteration = self._current_iteration
-
+    def choose_action(self, state, available_modes):
+        ''' Epsilon-Greedy selection for mode choices for this specific agent. ''' 
         # Exploration (Random)
-        if random.random() < current_epsilon and current_iteration < self.max_training_iteration:
-            action = random.choice(available_modes)
+        if random.random() < self._epsilon and self._current_iteration < self.max_training_iteration:
+            return random.choice(available_modes)
         # Exploitation
         else:
-            agent_policy = agent_q_table[state]
-            # Filter policy for only modes available for the agent
+            agent_policy = self._q_table[state]
             filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
-            action = max(filtered_policy, key=filtered_policy.get)
+            return max(filtered_policy, key=filtered_policy.get)
 
-        return action
-
-    def update_policy(self, agent_id, state, action, reward, next_state=None, print_tabel=False):
+    def update_policy(self, state, action, reward, next_state=None, print_tabel=False):
         ''' 
-        The Bellman Equation Update 
-        Q(s, a) = Q(s, a) + alpha * [reward + gamma * max(Q(s', a')) - Q(s, a)] '''
+        The Bellman Equation Update for this agent.
+        "Q(s, a) = Q(s, a) + alpha * [reward + gamma * max(Q(s', a')) - Q(s, a)]" '''
 
         if self._current_iteration >= self.max_training_iteration:
             return
         
-        agent_q_table = self._q_table[agent_id]
-
-        old_q = agent_q_table[state][action]
-        
-        # Get current Q(s,a)
-        current_q = agent_q_table[state][action]
+        current_q_value = self._q_table[state][action]
 
         if next_state is None:
             target = reward # No furture update required
         # Get Max Q(s', a') for the next state
         else:
-            future_reward_value = max(self._q_table[agent_id][next_state].values())
+            future_reward_value = max(self._q_table[next_state].values())
             # Discount the future reward to the current reward
             target = reward + self._gamma * future_reward_value
 
         # Update Rule: Q(s,a) = Q(s,a) + alpha * [Reward + gamma * MaxQ(s') - Q(s,a)]
-        agent_q_table[state][action] += self._alpha * (target - current_q)
-
-        new_q = agent_q_table[state][action]
+        self._q_table[state][action] += self._alpha * (target - current_q_value)
+        new_q_value = self._q_table[state][action]
 
         # Incremental change in q value
-        self._delta_q = abs(new_q - old_q)
+        old_q_value = current_q_value
+        self._delta_q = abs(new_q_value - old_q_value)
 
         if print_tabel:
-            self.print_q_table(agent_id)
+            self.print_q_table()
 
-    def print_q_table(self, agent_id):
+    def print_q_table(self):
         ''' Print the bit-encoded Q-table within the Command Prompt window using a grid layout. '''
-        
-        # Check if agent exists in Q-table
-        if agent_id not in self._q_table or not self._q_table[agent_id]:
-            return
 
         # Width tailored for tighter, packed columns
         width = 118
 
         print(f"\n{'=' * width}")
-        print(f"{'PERSONAL Q-TABLE (GRID VIEW): ' + str(agent_id):^{width}}")
+        print(f"{'PERSONAL Q-TABLE (GRID VIEW): ' + str(self._id):^{width}}")
         print(f"{'=' * width}")
 
         # The new optimized header
@@ -167,10 +163,7 @@ class DecentralizedQLearningAgent:
         print(header)
         print("-" * width)
 
-        #sorted_table = sorted(self._q_table[agent_id].items(), key=lambda x: x[0])
-
-        for state_bits, actions in self._q_table[agent_id].items():
-            # Emergency fallback filter for short/terminal states
+        for state_bits, actions in self._q_table.items():
             state_bits_string = [str(bit) for bit in state_bits]
 
             if "TERMINAL" in state_bits or len(state_bits) < 136:
@@ -190,13 +183,10 @@ class DecentralizedQLearningAgent:
             ast = "".join(state_bits_string[134:136])
 
             # 2. Decode Labels
-            #tau_val = self._find_index(tme, '1')
-            #asset_idx = self._find_index(ast, '1')
             tau_val = int(tme, 2)
             asset_idx = int(ast, 2)
-            #flex_label = "FLEXIBLE" if flx == '1' else "CONSTRAINED"
-            print(asset_idx)
             asset_label = {0: "NONE", 1: "CAR ONLY", 2: "BIKE ONLY", 3: "CAR + BIKE"}.get(asset_idx, "NONE")
+            #flex_label = "FLEXIBLE" if flx == '1' else "CONSTRAINED"
 
             # 3. Slice bits into a 4x16 Matrix (4 chunks of 16 bits each)
             d_chunks = ["".join(state_bits_string[0:16]), "".join(state_bits_string[16:32]), "".join(state_bits_string[32:48]), "".join(state_bits_string[48:64])]
@@ -227,8 +217,39 @@ class DecentralizedQLearningAgent:
 
         print(f"{'=' * width}\n")
 
-    def _find_index(self, sequence, target='1'):
+    def dump(self, iteration):
+        ''' Saves the Q-table to a file using pickle '''
+
+        if iteration > self.max_training_iteration:
+            save_directoy = self._output_directory
+        else:    
+            save_directory = f"{self._output_directory}/ITERS/it.{iteration}"
+
+        print(f"The directory to save the table is: {save_directory}")
+        
         try:
-            return list(sequence).index(target)
-        except ValueError:
-            return 0
+            # Ensure the directory exists before dumping
+            os.makedirs(save_directory, exist_ok=True)
+            save_file_path = os.path.join(save_directory, "q_table.pkl")
+            
+            with open(save_file_path, 'wb') as f:
+                pickle.dump(self._q_table, f)
+                
+            print(f"PYTHON SERVICE: Q-Table successfully saved to {save_directory}.")
+        except Exception as e:
+            print(f"PYTHON SERVICE: Failed to save Q-Table: {e}")
+
+
+
+
+    def load_models(self, load_file_path):
+        ''' Loads decentralized tables from file. '''
+        if os.path.exists(load_file_path):
+            try:
+                with open(load_file_path, 'rb') as f:
+                    self._agent_tables = pickle.load(f)
+                print(f"PYTHON SERVICE: Loaded tables for {len(self._agent_tables)} unique agents.")
+            except Exception as e:
+                print(f"PYTHON SERVICE: Failed to load: {e}.")
+        else:
+            print("PYTHON SERVICE: No model found. Starting decentralized training fresh.")

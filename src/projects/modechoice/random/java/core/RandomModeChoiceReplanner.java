@@ -46,9 +46,8 @@ public class RandomModeChoiceReplanner extends WithinDayReplanner {
     @Override 
     protected Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation) {
         Plan modifiablePlan = WithinDayAgentUtils.getModifiablePlan(agent);
-        
+
         // Construct the state observation metrics
-        stateObservation.put("simulationIteration", StateEngine.currentIteration);
         if (agentDemographics != null) {
             stateObservation.put("subpopulation", agentDemographics.getOrDefault("subpopulation", "default"));
         }
@@ -57,7 +56,8 @@ public class RandomModeChoiceReplanner extends WithinDayReplanner {
         //String mode = TripStructureUtils.identifyMainMode(nextTrip.getTripElements()).trim();
         log.info("COMMUNICATION NET: Transmitting environment state for agent {}", agentDemographics.get("agentId").toString());
         String jsonState = gson.toJson(stateObservation);
-        String mode = this.communicationManager.httpPost(jsonState, getDecisionEndpoint(), 360).trim();
+        String response = this.communicationManager.httpPost(jsonState, communicationManager.getDecisionEndpoint(), 360, agentDemographics.get("agentId").toString()).trim();
+        String mode = response.replaceAll("[{}\"]", "").split(":")[1].trim().toLowerCase();
         log.info("Assigned mode '{}' to agent {}", mode.toUpperCase(), agentDemographics.get("agentId").toString());
 
         // Update agent's executed plan in memory

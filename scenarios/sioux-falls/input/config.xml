@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+﻿<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE config SYSTEM "./dtd/config_v2.dtd">
 
 <config>
@@ -290,9 +290,9 @@
 
     <module name="withinday">
         <param name="externalModelFileName" value="modeChoiceModel.xml" />
-        <param name="allowAllAgents" value="false" />
-        <param name="agentFilterList" value="10047_1" />
+        <param name="trainAgentIDList" value="10034_1,10047_1" />
 		<param name="samplingPercentage" value="0.20" />
+		<param name="agentsPerIteration" value="10" />
         <param name="modes" value="car,pt,bike,pedestrian" />
         <param name="tourBasedModes" value="car,bike" />
     </module>

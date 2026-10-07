@@ -1,136 +1,481 @@
-# a7-rl-testbed
+# MATSim Within-Day Python Bridge
 
-This repository incoporates a reinforcement learning decision making in matsim within-day planning for single agent.
+An extensible hybrid framework that connects **[MATSim](https://www.matsim.org/) (Multi-Agent Transport Simulation)** in Java with Python's machine learning, reinforcement learning, optimization and scientific computing ecosystem, so that agents can make **adaptive, real-time, within-day decisions** during a running simulation.
 
----
-
-## 1. Terminology & Parameter Glossary
-
-### 1.1 Core Architecture Frameworks
-* **MATSim (Multi-Agent Transport Simulation):** An open-source, extensible Java framework designed for simulating microscopic, agent-based transport systems and traffic dynamics.
-* **RL (Reinforcement Learning):** A machine learning paradigm where an autonomous entity (agent) learns to optimize dynamic control loops through sequential trial-and-error interactions.
-* **MDP (Markov Decision Process):** A mathematical framework utilized to model discrete-time stochastic control processes where outcomes are partly random and partly controlled by a decision-maker.
-
-### 1.2 Runtime Environment Flags
-* **`MATSIM_ITERATION`:** Defines the starting iteration index within the execution loop (typically initialized to `1`).
-* **`MAX_TRAINING_ITERATION`:** The absolute terminal iteration floor for the policy update engine. The simulation execution sequence terminates once this training cycle limit is met.
-* **`AGENT_LIST`:** A configuration switch (`true`/`false`) controlling whether the system tracks the complete global simulation register or narrows focus to specific agent IDs.
-* **`NUM_THREADS`:** Configures parallel execution scaling. Allocating more CPU cores limits bottleneck states during multi-agent route calculations.
+![Java](https://img.shields.io/badge/Java-25-orange)
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Build](https://img.shields.io/badge/build-Maven-red)
+![Docker](https://img.shields.io/badge/docker-supported-2496ED)
 
 ---
 
-## 2. Methodology
-The core framework models individual traveler mode choice optimization as a Markov Decision Process (MDP) solved via a Tabular Q-Learning engine. Rather than sharing behavioral policies via a centralized global layout, agents undergo Individual Learning. This layout preserves localized schedule habits, unique spatial constraints, and distinct vehicle asset access privileges.
+## Table of Contents
 
-### 2.1 Reinforcement Learning
-To capture the sequential, adaptive nature of daily travel planning, this study models the multi-leg mode choice problem through the lens of Reinforcement Learning (RL). Under this paradigm, an autonomous agent interacts with a dynamic transportation environment over a series of discrete iterations, learning an optimal behavioral policy through trial and error.
-
-![RL Workflow Diagram](images/rl_workflow.jpg)
-
-At each decision node (the beginning of a trip leg), the agent observes its current environmental context ($S$), executes a transit mode action ($A$), and transitions to the next activity location ($S'$). Upon completing its daily travel itinerary, the agent receives a feedback for each step in the form of a scalar reward ($R$), rather than at the end of the day.
-
----
-
-### 2.2 Tabular Q-Learning Mechanics
-
-The optimization engine behind the independent mode-choice adjustments relies on model-free, value-based Tabular Q-Learning. The agent utilizes an internal discrete matrix lookup array—the **Q-Table**—where rows map to the unique encoded **151-Bit DNA State** configurations, and columns map to the four discrete structural travel actions (`car`, `pt`, `bike`, `pedestrian`). 
-
-Each index cell contains an expected long-term utility score, known as a **Q-value** ($Q(s, a)$).
-
-#### 2.2.1 The Value Update Equation
-Q-values are dynamically modified at the end of each daily simulation loop using a temporal-difference learning cycle governed by the standard Bellman Equation:
-
-$$Q(s, a) \leftarrow Q(s, a) + \alpha \left[ R + \gamma \max_{a'} Q(s', a') - Q(s, a) \right]$$
-
-Where:
-* **$Q(s, a)$**: The current expected utility estimation of taking a specific transit action within the current spatial-temporal state.
-* **$\alpha$ (Learning Rate)**: Controls the speed of model updates ($0 < \alpha \le 1$). A value closer to 1 shifts policy weight aggressively to the newest day's experienced reward, while lower values smooth out updates over multiple iterations.
-* **$R$ (Scalar Reward Feedback)**: The structural utility feedback derived directly from the MATSim performance loops, calculated via the integrated **Kai-Nagel Wrap-Around logic**.
-* **$\gamma$ (Discount Factor)**: Determines the agent's long-term foresight horizon ($0 \le \gamma < 1$). Higher values force the agent to prioritize maximizing scores for downstream legs rather than rushing into immediate high-reward actions on early trips.
-* **$\max_{a'} Q(s', a')$**: The maximum estimated future reward possible from the next sequential trip leg's state ($s'$).
-
-#### 2.2.2 Action Selection and Epsilon Decay Schedule
-To navigate the trade-off between refining known high-value travel routines and uncovering hidden multi-modal connections, action selection is governed by an **$\epsilon$-greedy exploration policy**:
-
-$$\text{Action} = \begin{cases} 
-\text{Random Mode Choice} & \text{with probability } \epsilon \\ 
-\arg\max_{a} Q(s, a) & \text{with probability } 1 - \epsilon 
-\end{cases}$$
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Repository Structure](#repository-structure)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Running Locally](#running-locally)
+- [Running with Docker](#running-with-docker)
+- [Configuration Reference](#configuration-reference)
+- [Developing Your Own Project](#developing-your-own-project)
+- [Output](#output)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Citation](#citation)
 
 ---
 
-### 2.3 MATSim + Reinforcement Learning Framework Integration
+## Overview
 
-The operational architecture of this project relies on a distributed microservice framework that bridges two distinct programming ecosystems: the physical mobility simulator and the adaptive artificial intelligence backend.
+MATSim provides a scalable, event-driven framework for agent-based traffic simulation. Python provides a vast collection of libraries for learning and optimization. This project lets the two work together:
 
-#### 2.3.1 Front-End Execution: MATSim (Java)
-The front-end of the application is native to **Java** using the **MATSim (Multi-Agent Transport Simulation) 2026 Core**. MATSim is strictly responsible for handling the physics of the transport ecosystem, resolving network gridlock, tracking physical vehicle constraints, and generating the baseline mobility scenario configurations. 
+- **MATSim (Java)** remains the core simulation engine: network dynamics, agent interactions, congestion and event processing.
+- **Python** acts as the cognitive "brain": it receives observations from the running simulation and returns decisions, without breaking simulation synchronization.
 
-During the simulation loop, Java acts as the telemetry provider. It leverages custom event handlers (`WithinDayAgentUtils`) to freeze the agent's execution loop at critical trip leg intersections to extract raw spatial-temporal parameters.
+Typical Python-side tooling includes:
 
-#### 2.3.2 Back-End Decision Engine: RL Service (Python)
-The Reinforcement Learning optimization engine runs natively inside a **Python 3.12 environment**. Python isolates the behavioral logic, handling the complex mathematical routines behind value matrix updates, tracking independent multi-agent Q-tables, and calculating policy exploration decay schedules. It treats the data incoming from the front-end purely as state inputs, processing it without needing to understand the underlying mechanical physics of MATSim's traffic queues.
+| Area | Libraries |
+|---|---|
+| Deep learning | PyTorch, TensorFlow |
+| Reinforcement learning | Stable-Baselines3, Ray/RLlib |
+| Optimization & operations research | SciPy, CVXPY, NetworkX, OR-Tools |
+| Data science & spatial modeling | Pandas, NumPy, Scikit-Learn, GeoPandas |
 
-#### 2.3.3 The Communication Layer: SSH Network and CRUDE Pipeline
-To cross the runtime boundary between the Java JVM and the Python interpreter, communication is bound through a **SSH network bridge** utilizing a continuous **CRUDE (Create, Read, Update, Delete, Execute) data pipeline**. 
-
-The lifecycle of a single multi-leg mode decision flows through this pipeline step-by-step:
-1. **Trigger (Java):** An agent reaches an activity end-time and initializes a trip leg request.
-2. **Serialize & POST (Java $\rightarrow$ Python):** The Java encoder serializes the agent's spatial-temporal parameters into a discrete state array. This is dispatched securely across the established SSH loop.
-3. **Process & GET (Python):** The Python backend reads the incoming state string, logs the feedback to update the individual's specific tabular array cell, runs the $\epsilon$-greedy policy selection, and chooses a structural action (e.g., `pt`, `car`).
-4. **Return & Execute (Python $\rightarrow$ Java):** The chosen transit mode action is returned through the SSH pipeline to the Java front-end, where MATSim updates the active agent's plan profile on the fly and simulates their route across the network.
-5. **Trigger (Java):** The agent reaches the desired targeted activity and initializes a reward request.
-6. **POST (Java $\rightarrow$ Python):** The Java than sends the reward associated with the action and the prediction of the next state.
+Agents can therefore act on pre-trained neural networks, progressively evolving behavioral policies, or global optimization algorithms, for example choosing a travel mode (car, public transit, walking) or re-routing mid-day.
 
 ---
 
-## 3. Deployment & Execution Guide
+## System Architecture
 
-This section outlines the hardware prerequisites, cross-platform dependencies, and specific execution sequences required to initialize the distributed Java-Python simulation lifecycle.
+![Within-day communication workflow](images/withinday_workflow.jpg)
 
-### 3.1 System Requirements & Container Registries
+The framework has two layers, and an optional layer for process orchestration.
 
-#### 3.1.1 Hardware Prerequisites
-* **Processor:** Minimum 4 Cores (8 Cores recommended to handle concurrent multi-agent network routing threads).
-* **Memory:** Minimum 8 GB RAM allocated to the Java Virtual Machine (JVM) heap space for processing scenario configurations.
-* **Storage:** 2 GB free disk space for simulation iterations, Q-table serialization blocks, and logging outputs.
+### 1. Java simulation
 
-#### 3.1.2 Core Dependencies
-* **Java Development Kit (JDK):** Version 25 (Required for compiling and executing the MATSim 2026 Core).
-* **Python Runtime:** Version 3.12 or newer.
+The execution engine. It runs the MATSim `QSim` and is responsible for:
 
-#### 3.1.3 Containerization Engines
-To replicate the network execution environment across varying operating systems without manual local port configuration, deploy via Docker. Download your platform-specific container engine directly from the official Docker Hub registries:
-* **Windows Environments (Docker Desktop with WSL2 Backend):** https://hub.docker.com/editions/community/docker-ce-desktop-windows
-* **Linux Environments (Native Docker Engine Core):** https://hub.search.brave.com/search?q=docker&type=image
+- **Macroscopic traffic simulation:** vehicle movement, queue dynamics and congestion across links and nodes.
+- **Event monitoring and triggers:** listens to simulation events for agents flagged by the `AgentSelector`, e.g. when an agent finishes an activity and is about to depart or switch trip legs.
+- **State observation:** the `WithinDayObserver` builds a local state vector from the network snapshot around the agent in space and time.
+- **Real-time plan adaptation:** the `WithinDayReplanner` rewrites the agent's plan (itinerary, activity schedule, upcoming trip choices) using the response from Python.
+- **IPC lifecycle management:** the `CommunicationManager` starts and health-checks the communication channel to the Python service.
 
-![Container Diagram](images/matsim_rl_interface.png)
+### 2. Python service
+
+A high-performance service (e.g. FastAPI + Uvicorn) that receives serialized agent observations and returns decisions:
+
+- **Agent model initializer:** maintains state configuration and policy networks per agent.
+- **Inference and policy engine:** uses agent experience to improve the policy.
+- **Action decision handler:** evaluates the valid action space (e.g. mode choice, route replanning) and returns the chosen action to Java.
+
+### 3. Distributed orchestration
+
+A Python runner (`withinday.core.pymatsim` and `withinday.core.nodes.WorkerNode`) that assembles the Java command line: JVM heap size, thread count, output directory, and injection of project-specific configuration and custom replanner/observer classes. It is the entry point inside Docker and is suitable for cluster or multi-node tuning runs.
 
 ---
 
-### 3.2 Execution Sequences
+## Repository Structure
 
-#### Option A: Containerized Cluster Deployment (Recommended)
-This approach leverages automated container composition to expose isolated network ports and instantly bind the SSH bridge/CRUDE data pipeline.
+```text
+.
+├── Dockerfile.txt                  # Container image (Python 3.12 + JDK 25)
+├── a7-rl-testbed-0.0.1-SNAPSHOT    # Java executable file (.jar)
+├── pom.xml / mvnw / mvnw.cmd       # Maven build
+├── images/                         # Documentation images
+├── scenarios/
+│   └── <scenario>/                 # e.g. sioux-falls
+│       ├── input/                  # config.xml, network, plans, ...
+│       └── output/                 # simulation results
+│           └── project/            # e.g. random_choice
+├── shared_storage/                 # Data shared between runs/containers
+└── src/
+    ├── main/
+    │   ├── java/org/matsim/withinday/ 
+    │       ├── core/             # Core functionalities of the within-day framework
+    │       │   ├── AgentSelector.java     # Samples external policy governed agents
+    │       │   ├── RunWithinDay.java      # Abstract run class for within-day
+    │       │   ├── WithinDayListener.java # Within-day events listener   
+    │       │   └── WithinDayReplanner.py  # Abstract replanner class
+    │       ├── environment/      # Methods interacting with Mobsim environment
+    │       │   ├── AgentAssetInventory.java  # Tracks relative location of transport mode
+    │       │   ├── MatsimScoreTracker.java   # Tracks agent specific kai-nagel score
+    │       │   ├── StateEnginer.java         # 
+    │       │   ├── WithinDayObserver.java    # Abstract observer class   
+    │       │   └── WithinDayScoring.java     # Abstract scoring engine class
+    │       ├── networking/      # Java front-end communication bridge  
+    │       │   ├── CommunicationManager.java # Abstract http communication class   
+    │       │   └── UnixSocketCommunicationManager.java # Specialized unix class  
+    │       └── utils/           # Java helper functions         
+    │   └── python/withinday/
+    │       └── core/            # Distributed orchestration functionalities
+    │       │   ├── pymatsim.py     # run_simulation(): reads env vars, launches a worker
+    │       │   └── nodes.py        # WorkerNode: builds & runs the Java command
+    │       ├── networking/      # Python back-end communication bridge 
+    │       │   ├── main.py         # FastAPI server exposing MATSim bridge endpoints
+    │       │   ├── python_matsim_bridge.py # Abstract bridge class
+    │       │   └── Models.py       # Pydantic schemas for MATSim agent data
+    │       └── Pipfile          # python environment   
+    ├── projects/
+    │   └── modechoice/random/   # Example project: random mode choice
+    │       ├── java/               # Replanner / observer / runner (Java)
+    │       └── python/             # Bridge service + run script (Python)
+    └── test/java/org/matsim/
+        └── random_mode_choice/   # Example test folder: random mode choice
+            └── run_test.ps1/       # powershell run script to test random mode choice
+```
 
-1. **Build the docker image:**
-    ```powershell
-    docker build -t {image_name}:{version} .
+---
 
-    Note: Ensure the trailing period '.' is present to specify the local context compilation path.
+## Prerequisites
 
-2. **Run the container:**
-   Run the following command block to spin up the simulation engine. This configuration passes optimization constants, sets network port communications, and mounts local directories to process simulation input/output files:
-   
+| Requirement | Version | Needed for |
+|---|---|---|
+| JDK | 25 | Local runs |
+| Python | 3.12 | Local runs |
+| Maven | via `./mvnw` wrapper | Building `simulation.jar` |
+| Docker | recent | Container runs |
+| WSL 2 (with Docker) | - | Container runs on Windows |
+
+---
+
+## Quick Start
+
+```bash
+git clone -b develop https://github.com/Alirockman1/matsim-withinday-python.git
+cd matsim-withinday-python
+```
+
+Already cloned? Switch with `git checkout develop`.
+
+Then follow either [Running Locally](#running-locally) or [Running with Docker](#running-with-docker).
+
+---
+
+## Running Locally
+
+### 1. Set environment variables
+Replace `<MainClass>` with the fully qualified class containing your `main` method, `<Service>` / `<YourObserver>` / `<YourReplanner>` with your **Bridge Service class** \ **Observer class** \ **Replanner class** that should run, and `<scenario>` / `<project_name>` with your scenario and project.
+
+**Linux / macOS**
+
+```bash
+export JAVA_HOME="/opt/jdk-25"
+export PYTHONPATH="$PWD/src/main/python:$PWD/src/projects"
+export PATH="${JAVA_HOME}/bin:${PATH}"
+export MATSIM_OUTPUT_BASE="$PWD/scenarios/<scenario>/output/"
+
+# Which Python bridge service Java should start:
+export SERVICE_CLASS="<project_name>.python.networking.bridge_service.<Service>"
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:JAVA_HOME = "C:\path\to\jdk-25"
+$env:PYTHONPATH = "$PWD\src\main\python;$PWD\src\projects"
+$env:PATH = "$env:JAVA_HOME\bin;" + $env:PATH
+$env:MATSIM_OUTPUT_BASE = "$PWD\scenarios\<scenario>\output\"
+$env:SERVICE_CLASS = "<project_name>.python.networking.bridge_service.<Service>"
+```
+
+### 2. Install Python dependencies
+
+```bash
+cd src/main/python
+pip install pipenv
+pipenv install --system --deploy --skip-lock
+pip install -e .
+cd ../../..
+```
+
+### 3. Build the Java project
+
+**Linux / macOS**
+
+```bash
+./mvnw clean install -DskipTests
+```
+
+**Windows (PowerShell)**
+
+```powershell
+.\mvnw.cmd clean install -DskipTests
+```
+
+>**Note:** Check where the jar was created (e.g. `ls target/*.jar`) and use that file in the next step.
+
+### 4. Run the simulation
+
+**Linux / macOS**
+ 
+```bash
+rm -rf scenarios/<scenario>/output/project/<project_name>  
+ 
+java -Xmx12g -Djava.awt.headless=true \
+  -cp target/a7-rl-testbed-0.0.1-SNAPSHOT.jar \
+  <MainClass> \
+  scenarios/<scenario>/input/config.xml \
+  --config:controller.outputDirectory=scenarios/<scenario>/output/project/<project_name> \
+  --config:controller.lastIteration=9 \
+  --config:global.numberOfThreads=4 \
+  --config:withinday.agentsPerIteration=1 \
+  --config:withinday.replanner=<YourReplanner> \
+  --config:withinday.observer=<YourObserver>
+```
+ 
+**Windows (PowerShell)**
+ 
+```powershell
+Remove-Item -Recurse -Force scenarios\<scenario>\output\project\<project_name> -ErrorAction SilentlyContinue
+ 
+java -Xmx12g -Djava.awt.headless=true `
+  -cp target\a7-rl-testbed-0.0.1-SNAPSHOT.jar `
+  <MainClass> `
+  scenarios\<scenario>\input\config.xml `
+  --config:controller.outputDirectory=scenarios/<scenario>/output/project/<project_name> `
+  --config:controller.lastIteration=9 `
+  --config:global.numberOfThreads=4 `
+  --config:withinday.agentsPerIteration=1 `
+  --config:withinday.replanner=<YourReplanner> `
+  --config:withinday.observer=<YourObserver>
+```
+>
+ **Note:**
+ - The Java process launches the **Python bridge service** itself (via the `CommunicationManager`). The service to start is selected by the `SERVICE_CLASS` environment variable, and Python must be able to import it, so `SERVICE_CLASS` and `PYTHONPATH` must be set **in the shell that runs `java`**. You do not start the Python service manually.
+ 
+ - Omitting `--config:withinday.replanner` / `observer` uses the framework defaults.
+
+ - `WorkerNode` currently invokes `/app/simulation.jar` and `pymatsim` reads scenario files from `/app/scenarios/...`. These paths exist inside the Docker image. For the Python wrapper to work outside Docker you need to mirror those paths (or make them configurable). The direct `java` command above works anywhere.
+
+---
+
+## Running with Docker
+
+The container bundles Python 3.12, JDK 25, all Python dependencies and the simulation jar, so no manual setup is required.
+
+### How the container works
+
+- `Dockerfile.txt` installs JDK 25, installs the Python dependencies, copies `src/` and the simulation jar (to `/app/simulation.jar`), and declares three volumes: scenario input, scenario output and `shared_storage`.
+- The entrypoint is `sh -c` and the default command is `python3 $RUN_SCRIPT`, so the container runs whichever Python script you pass in `RUN_SCRIPT`.
+- That script calls `run_simulation(...)`, which reads the environment variables listed in the [Configuration Reference](#configuration-reference) and launches the Java process through `WorkerNode`.
+- -config:... The environment (including `SERVICE_CLASS`) is inherited by Java, which starts the Python bridge service inside the same container.
+
+
+### Before you build: the jar
+ 
+`Dockerfile.txt` contains `COPY a7-rl-testbed-0.0.1-SNAPSHOT.jar /app/simulation.jar`, so ensure the file is in the **repository root** (the build context).
+
+### Linux / macOS
+
+**1. Build the Java project**
+
+```bash
+./mvnw clean install -DskipTests
+```
+
+**2. Build the Docker image**
+
+The Dockerfile copies the jar from the build context root (`a7-rl-testbed-0.0.1-SNAPSHOT.jar`). Make sure the jar is available there (e.g. copy it from `target/`) before building.
+
+```bash
+docker build -f Dockerfile.txt -t matsim-rl:development .
+```
+
+**3. Run the container**
+Replace `<RUN_SCRIPT>` with the full in-container path of your project's java wrapper.
+
+```bash
+SCENARIO=<scenario>
+
+docker run --rm -it \
+  -e OBJECTIVE="single" \
+  -e SCENARIO="$SCENARIO" \
+  -e MATSIM_OUTPUT_BASE="/app/scenarios/$SCENARIO/output" \
+  -e MATSIM_ITERATION="9" \
+  -e NUM_THREADS="4" \
+  -e JAVA_HEAP="12g" \
+  -e AGENTS_PER_ITERATION="1" \
+  -e REPLANNER_CLASS="<YourReplanner>" \
+  -e OBSERVER_CLASS="<YourObserver>" \
+  -e RUN_SCRIPT="<RUN_SCRIPT>" \
+  -v "$PWD/scenarios/$SCENARIO/input:/app/scenarios/$SCENARIO/input" \
+  -v "$PWD/scenarios/$SCENARIO/output:/app/scenarios/$SCENARIO/output" \
+  -v "$PWD/shared_storage:/app/shared_storage" \
+  matsim-rl:development
+```
+
+### Windows (PowerShell + WSL 2)
+
+```powershell
+# 1. Start the Docker service in WSL
+wsl -u root service docker start
+
+# 2. Build the Java project
+.\mvnw.cmd clean install -DskipTests
+
+# 3. Build the image
+wsl docker build -f Dockerfile.txt -t matsim-rl:development .
+
+# 4. Run the container (paths must be WSL paths, e.g. /mnt/c/...)
+wsl docker run --rm -it `
+  -e OBJECTIVE="single" `
+  -e SCENARIO="<scenario>" `
+  -e MATSIM_OUTPUT_BASE="/app/scenarios/<scenario>/output" `
+  -e MATSIM_ITERATION="9" `
+  -e NUM_THREADS="4" `
+  -e JAVA_HEAP="12g" `
+  -e AGENTS_PER_ITERATION="1" `
+  -e REPLANNER_CLASS="<YourReplanner>" `
+  -e OBSERVER_CLASS="<YourObserver>" `
+  -e RUN_SCRIPT="<RUN_SCRIPT>" `
+  -v "/mnt/c/path/to/repo/scenarios/<scenario>/input:/app/scenarios/<scenario>/input" `
+  -v "/mnt/c/path/to/repo/scenarios/<scenario>/output:/app/scenarios/<scenario>/output" `
+  -v "/mnt/c/path/to/repo/shared_storage:/app/shared_storage" `
+  matsim-rl:development
+```
+
+**One-command run**
+
+The container can also be run directly using a powershell script (for reference look at `run_test.ps1` scripts in `\src\test\java\ord\matsim\.`). This automates the whole pipeline: start Docker in WSL, rebuild the jar, rebuild the image, convert Windows paths to WSL paths, and run the container.
+
+1. Copy the existing `run_test.ps1` into your own project.
+
+2. Edit the parameters at the top of the script:
+
+   | Variable | Meaning |
+   |---|---|
+   | `$RUN_SCRIPT` | In-container path of the Python run script |
+   | `$OBSERVER_CLASS` / `$REPLANNER_CLASS` | Custom within-day classes |
+   | `$SCENARIO_NAME` | Scenario folder under `scenarios/` |
+   | `$OBJECTIVE` | `single` or `multi` |
+   | `$MATSIM_ITERATION` | Last MATSim iteration |
+   | `$NUM_THREADS`, `$MEMORY` | Threads and JVM heap |
+   | `$NUM_AGENTS_PER_ITERATION` | Agents handled per iteration (`multi` mode) |
+   | `$UPDATE_JAR` | Rebuild the jar with Maven before running |
+   | `$REBUILT_DOCKER` | Remove and rebuild the Docker image before running |
+
+2. Run it:
+
    ```powershell
-   docker run --rm -it `
-        -e MATSIM_ITERATION=1 `
-        -e AGENT_LIST=false `
-        -e MAX_TRAINING_ITERATION=5 `
-        -e NUM_THREADS=1 `
-        -e JAVA_HEAP=12g `
-        -p 8000:8000 `
-        -v "{matsim_input_file_path}:/app/scenarios/sioux-falls/input/" `
-        -v "{matsim_output_file_path}:/app/scenarios/sioux-falls/output/" `
-        {image_name}:{version}
+   .\run_test.ps1
+   ```
 
+---
+
+## Configuration Reference
+
+### Environment variables (read by `pymatsim.run_simulation`)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SCENARIO` | Yes | - | Scenario name; config is read from `/app/scenarios/$SCENARIO/input/config.xml` |
+| `MATSIM_OUTPUT_BASE` | Yes | - | Output directory passed to `controller.outputDirectory` |
+| `MATSIM_ITERATION` | Yes | - | Last iteration (`controller.lastIteration`) |
+| `NUM_THREADS` | Yes | - | Thread count (`global.numberOfThreads`) |
+| `OBJECTIVE` | Yes | - | `single` (one agent per iteration) or `multi` |
+| `AGENTS_PER_ITERATION` | If `multi` | `1` in `single` | Agents processed per iteration (`withinday.agentsPerIteration`) |
+| `JAVA_HEAP` | No | `12g` | JVM max heap (`-Xmx`) |
+| `REPLANNER_CLASS` | No | `default` | Sets `withinday.replanner` |
+| `OBSERVER_CLASS` | No | `default` | Sets `withinday.observer` |
+| `RUN_SCRIPT` | Yes | - | Python wrapper for java, executed by the container |
+| `SERVICE_CLASS` | Project-specific | - | Bridge service class, set by the project's run script |
+
+### Java config overrides
+
+Any MATSim config parameter can be overridden with `--config:<module>.<param>=<value>`. `WorkerNode` accepts an `extra_config` dictionary and appends each non-`None` entry as such an override.
+
+### Python API
+
+```python
+from withinday.core.pymatsim import run_simulation
+
+run_simulation(
+    run_script="org.matsim.withinday.core.RunWithinDay",  # Java main class
+    extra_config={"withinday.someParam": "value"},        # optional overrides
+)
+```
+
+`run_simulation` prints the total runtime when the simulation finishes, whether or not it succeeded. A non-zero Java exit code raises `subprocess.CalledProcessError`.
+
+---
+
+## Developing Your Own Project
+
+Projects live in `src/projects/<project_name>/`, split into a Java and a Python side. The `modechoice/random` project is the reference example.
+
+1. **Create the project folders**, e.g. `src/projects/mymodel/myproject/{java,python}`.
+2. **Implement the Java side:** a `WithinDayObserver` (what the agent sees), a `WithinDayReplanner` (how the plan is changed from the response) and a main runner class.
+3. **Implement the Python side:** a bridge service that receives observations and returns actions (your model, policy or optimizer goes here).
+4. **Add a run script (Only for container)** that selects your service and Java runner:
+
+   ```python
+   import os
+   from withinday.core.pymatsim import run_simulation
+
+   def run_pipeline():
+       os.environ["SERVICE_CLASS"] = "mymodel.myproject.python.networking.bridge_service.MyBridgeService"
+       run_simulation(run_script="mymodel.myproject.java.core.RunMyProjectWithinDay")
+
+   if __name__ == "__main__":
+       run_pipeline()
+   ```
+
+5. **Run it** by passing your custom `MainClass`, `Service`, `REPLANNER`, `OBSERVER` classses, and defining the project `<scenario>` / `<project_name>` folders as shown in either [Running Locally](#running-locally) or with the additional wrapper (`RUN_SCRIPT`) in [Running with Docker](#running-with-docker).
+
+> **Note:** A new instance **wipes the output folder** before running. Back up results you want to keep.
+
+---
+
+## Output
+
+Results are written to `MATSIM_OUTPUT_BASE` (inside Docker, the mounted `scenarios/<network>/output` folder). `shared_storage/` is mounted for data that should persist or be shared across runs, such as trained models or logs.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| `docker build` fails at `COPY ...SNAPSHOT.jar` | The jar is not in the build context root. Build with Maven and copy it there, or adjust the `COPY` line. |
+| `TypeError` / `None` on `int(os.environ.get("AGENTS_PER_ITERATION"))` | `OBJECTIVE=multi` was set without `AGENTS_PER_ITERATION`. |
+| Java: `Could not find or load main class` | Wrong `<MainClass>`, or the jar is not in the classpath (`target/*` locally, `/app/simulation.jar` in Docker). |
+| Config file not found in container | `SCENARIO` is unset or the input volume path is wrong. |
+| `docker: Cannot connect to the Docker daemon` (Windows) | Run `wsl -u root service docker start`. |
+| `OutOfMemoryError` | Increase `JAVA_HEAP` / `-Xmx`. |
+| Output folder unexpectedly empty (Windows) | `run_test.ps1` wipes it in `single` mode by design. |
+
+---
+
+## Contributing
+
+Contributions are welcome.
+
+1. Fork the repository and create a feature branch: `git checkout -b feature/my-change`
+2. Make your changes, with tests where applicable.
+3. Verify the build: `./mvnw clean install`
+4. Open a pull request describing what changed and why.
+
+---
+
+## License
+
+Add your license here (e.g. MIT, Apache-2.0) and include a `LICENSE` file in the repository root.
+
+---
+
+## Citation
+
+If you use this framework in academic work, please cite it as:
+
+```bibtex
+@software{matsim_withinday_python_bridge,
+  title  = {MATSim Within-Day Python Bridge},
+  author = {Your Name},
+  year   = {2026},
+  url    = {https://github.com/your-username/matsim-withinday-python-bridge}
+}
+```

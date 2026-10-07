@@ -4,6 +4,7 @@ import org.matsim.api.core.v01.Scenario;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.AbstractModule;
+import org.matsim.withinday.core.AgentSelector;
 import org.matsim.withinday.core.RunWithinDay;
 import org.matsim.withinday.core.WithinDayModeChoiceListener;
 import org.matsim.withinday.core.WithinDayReplanner;
@@ -38,6 +39,9 @@ public class RunRandomModeChoiceWithinDay extends RunWithinDay {
             return new AbstractModule() {
                 @Override
                 public void install() {
+                    // Selector
+                    bind(AgentSelector.class).asEagerSingleton();
+
                     // Bind standard MATSim Within-Day components for the baseline
                     bind(WithinDayObserver.class).to(RandomModeChoiceObserver.class).asEagerSingleton();
                     bind(WithinDayReplanner.class).to(RandomModeChoiceReplanner.class).asEagerSingleton();

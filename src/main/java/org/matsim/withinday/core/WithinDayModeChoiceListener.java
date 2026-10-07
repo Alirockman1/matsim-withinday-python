@@ -8,7 +8,6 @@ import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.events.ActivityStartEvent;
 import org.matsim.api.core.v01.events.handler.ActivityStartEventHandler;
-import org.matsim.api.core.v01.network.Link;
 import org.matsim.core.controler.listener.IterationEndsListener;
 import org.matsim.core.controler.events.IterationEndsEvent;
 import org.matsim.api.core.v01.population.Person;
@@ -30,13 +29,17 @@ import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.networking.CommunicationManager;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * <h2>WithinDayModeChoiceListener</h2>
+ * <p>
+ * Central listener orchestrating within-day replanning for each trip in an agents plan in
+ * the simulation lifecycle.
+ * </p>
+ */
 public class WithinDayModeChoiceListener implements StartupListener, IterationStartsListener,
 IterationEndsListener, MobsimBeforeSimStepListener,
 MobsimAfterSimStepListener, ActivityStartEventHandler {
@@ -50,46 +53,54 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     @Inject WithinDayObserver customObserver;
     @Inject WithinDayConfigGroup configGroup;
     @Inject MatsimScoreTracker scoreTracker;
+    @Inject AgentSelector agentSelector;
 
-    private AgentSelector agentSelector;
     private Map<Id<Person>, Double> activityStartTimeByAgent = new HashMap<>();
     
+    /**
+     * Defines the execution priority of this listener relative to other MATSim controler listeners.
+     * 
+     * @return Priority weight value.
+     */
     @Override
     public double priority() {return 10.0;}
 
-
+    /**
+     * Triggered upon simulation startup to initialize agent based replanner and agent sampling.
+     * 
+     * @param event The startup event container.
+     */
     @Override
     public void notifyStartup(StartupEvent event) {
-        this.agentSelector = new AgentSelector(scenario, 42L, log);
         this.customReplanner.initializeExternalModel();
+        this.agentSelector.sampleAgentsForSimulation();
     }
 
-
+    /**
+     * Triggered at the beginning of each simulation iteration to reset tracking metrics,
+     * sample active agents, initialize location tagging, and set available transport modes.
+     * 
+     * @param event The iteration starts event container.
+     */
     @Override
     public void notifyIterationStarts(IterationStartsEvent event) {
         StateEngine.currentIteration = event.getIteration();
 
-        // Sample agents from the population
-        double samplingPercentage = this.configGroup.getSamplingPercentage();
-
-        Collection<String> fixedAgentIds = new ArrayList<>();
-        if (this.configGroup!= null && this.configGroup.getAgentFilterList() != null) {
-            fixedAgentIds = Arrays.asList(this.configGroup.getAgentFilterList().split("\\s*,\\s*"));
-        }
-
-        this.agentSelector.sampleAgentsForIteration(event.getIteration(), samplingPercentage, fixedAgentIds);
+        // Sample agents from the subspace
+        this.agentSelector.sampleAgentsForIteration(event.getIteration());
         Set<Id<Person>> selectedAgents = this.agentSelector.getSelectedAgents();
 
+        // Matsim score tracker
         this.scoreTracker.beginIteration(selectedAgents);
 
         // Start tagging each agents mode geo location [CHANGE TO ONLY THE FILTED AGENTS]
         log.info("Initializing Mode Location Tagging for the filtrered agents at start of iteration {}", event.getIteration());
         AgentAssetInventory.initializeModeLocationTagging(this.scenario, selectedAgents);
-
-        selectedAgents.forEach(agentId -> {
-            Map<String, Id<Link>> location = AgentAssetInventory.getModeLocation(agentId);
-            System.out.println("Mode location for " + agentId + " is: " + location);
-        });
+        
+        //selectedAgents.forEach(agentId -> {
+        //    int assignedTag = this.agentSelector.getAgentTag(agentId);
+        //    System.out.println("Assigned Tag for " + agentId + " is: " + assignedTag);
+        //});
 
         // Initialize the tour based modes
         String[] tourBasedModes = AgentAssetInventory.getSimulationTourBasedModes().toArray(String[]::new);
@@ -97,7 +108,9 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     }
 
     /**
-     * Captures the exact simulation timestamp when an agent begins an activity.
+     * Captures the exact simulation timestamp when a filtered agent begins an activity.
+     * 
+     * @param event The activity start event.
      */
     @Override
     public void handleEvent(ActivityStartEvent event) {
@@ -106,25 +119,33 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         }
     }
 
-
+    /**
+     * Executed before each QSim time step to intercept agents ending their activities 
+     * and trigger within-day trip replanning when applicable.
+     * 
+     * @param e The mobsim before sim step event.
+     */
     @Override
     public void notifyMobsimBeforeSimStep(MobsimBeforeSimStepEvent e) {
         this.customReplanner.initEditTrips();
         QSim sim = (QSim) e.getQueueSimulation();
         double currentTime = e.getSimulationTime();
 
-        // Pick all agents that end their activity at the current simulation time
-        // and whose activity is going to end in this time step.
+        // Pick all agents that end their activity at the current simulation time.
         sim.getAgents().values().stream()
-                .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
-                .filter(p -> p.getActivityEndTime() == currentTime)
-                .filter(this.agentSelector::shouldReplan)
-                .forEach(p -> {
-                    this.customReplanner.replanNextTrip(p, sim, currentTime);
-                });
+            .filter(p -> this.agentSelector.contains(p.getId()))
+            .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
+            .filter(p -> p.getActivityEndTime() == currentTime)
+            .filter(this.agentSelector::shouldReplan)
+            .forEach(p -> this.customReplanner.replanNextTrip(p, sim, currentTime));
     }
 
-
+    /**
+     * Executed after each QSim time step to process agents that started their activities 
+     * during the current simulation step.
+     * 
+     * @param e The mobsim after sim step event.
+     */
     @Override
     public void notifyMobsimAfterSimStep(MobsimAfterSimStepEvent e) {
         this.customReplanner.initEditTrips();
@@ -132,8 +153,6 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         double currentTime = e.getSimulationTime();
 
         // Pick all agents that started their activity in the current step
-        // interaction activities are automatically filtered out.
-        // In the same time step => the state of such an agent is LEG after the sim step.
         sim.getAgents().values().stream()
                 .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
                 .filter(p -> activityStartTimeByAgent.containsKey(p.getId()))
@@ -144,24 +163,25 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
                 });
     }
 
-
+    /**
+     * Cleans up listener caches, inventory states, and replanner data at the conclusion 
+     * of each iteration.
+     * 
+     * @param event The iteration ends event container.
+     */
     @Override
     public void notifyIterationEnds(IterationEndsEvent event){
         log.info("Cleaning up listener cache and inventory for iteration {}", event.getIteration());
-
-        // Get the q_table for the agent
-        //try {
-        //    String sessionMetrics = pythonCommunicationManager.httpGet("/session/metrics", 360);
-        //}catch (Exception e) {
-        //    log.error("COMMUNICATION NET: Failed retriveing Q-Table. " + e.getMessage());
-        //}
-  
         this.activityStartTimeByAgent.clear();
         this.customReplanner.reset(event);
         this.agentSelector.reset();
     }
 
-
+    /**
+     * Resets internal tracking maps and caches for a given iteration.
+     * 
+     * @param iteration The iteration index being reset.
+     */
     @Override
     public void reset(int iteration) {
         this.activityStartTimeByAgent.clear();

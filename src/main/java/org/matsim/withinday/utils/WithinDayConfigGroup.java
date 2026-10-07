@@ -11,8 +11,8 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
     public static final String GROUP_NAME = "withinday";
 
     private static String externalModelFileName = "";
-    private String agentFilterList = "";
-    private boolean isAllowAllAgents = false;
+    private int agentsPerIteration = 1;
+    private String trainAgentIDList = "";
     private double samplingPercentage = 1.0;
     private static String modes;
     private static String tourModesList;
@@ -23,11 +23,11 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
         super(GROUP_NAME);
     }
 
-        public Collection<Id<Person>> getAgentIdsAsCollection() {
+    public Collection<Id<Person>> getAgentIdsAsCollection() {
         Collection<Id<Person>> ids = new HashSet<>();
         
         // Get the original string
-        String rawList = this.agentFilterList; 
+        String rawList = this.trainAgentIDList; 
 
         if (rawList != null && !rawList.isEmpty()) {
             // Split by comma
@@ -49,31 +49,17 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
     @StringSetter("externalModelFileName")
     public static void setExternalModelFileName(String modelFileName) { externalModelFileName = modelFileName; }
 
+    @StringGetter("agentsPerIteration")
+    public int getAgentsPerIteration() { return agentsPerIteration; }
 
-    @StringGetter("agentFilterList")
-    public String getAgentFilterList() { return agentFilterList; }
+    @StringSetter("agentsPerIteration")
+    public void setAgentsPerIteration(int agentsPerIteration) { this.agentsPerIteration = agentsPerIteration; }
 
-    @StringSetter("agentFilterList")
-    public void setAgentFilterList(String agentFilterList) { 
-        this.agentFilterList = agentFilterList;
-            
-            if (agentFilterList == null || agentFilterList.trim().isEmpty()) {
-                this.isAllowAllAgents = true;
-            } else {
-                this.isAllowAllAgents = false;
-            }
-    }
+    @StringGetter("trainAgentIDList")
+    public String getTrainAgentIDList() { return trainAgentIDList; }
 
-    @StringGetter("allowAllAgents")
-    public boolean getIsAllowAllAgents() {
-        if (this.agentFilterList == null || this.agentFilterList.trim().isEmpty()) {
-            return true;
-        }
-        return this.isAllowAllAgents;
-    }
-
-    @StringSetter("allowAllAgents")
-    public void setIsAllowAllAgents(boolean isAllowAllAgents) { this.isAllowAllAgents = isAllowAllAgents; }
+    @StringSetter("trainAgentIDList")
+    public void setTrainAgentIDList(String trainAgentIDList) { this.trainAgentIDList = trainAgentIDList;}
 
     @StringGetter("samplingPercentage")
     public double getSamplingPercentage() { return samplingPercentage; }

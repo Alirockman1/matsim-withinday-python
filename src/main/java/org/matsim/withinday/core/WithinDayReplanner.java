@@ -32,10 +32,12 @@ import org.matsim.withinday.utils.IterationEndReporting;
 import org.matsim.withinday.utils.WithinDayAgentExperience;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
-
 /**
+ * <h2>WithinDayReplanner</h2>
+ * <p>
  * Generic base class for all within-day replanning strategies.
  * Handles observer integration, state extraction, and network transmission to Python serving models.
+ * </p>
  */
 public abstract class WithinDayReplanner {
 
@@ -78,13 +80,13 @@ public abstract class WithinDayReplanner {
     public abstract void initializeExternalModel();
 
     /**
-     * The decision to make once the within day objective is reached. Can be extended for route choice or mode choice.
+     * The decision to make once the within-day objective is reached. Can be extended for route choice or mode choice.
      *
-     * @param agent  
-     * @param nextTrip
-     * @param agentDemographics
-     * @param stateObservations
-     * @return  The sanitized, trimmed transport mode string returned by the model or the default fallback.
+     * @param agent              The simulation agent.
+     * @param nextTrip           The upcoming trip structure.
+     * @param agentDemographics  Demographic attributes of the agent.
+     * @param stateObservation   Environmental state observations.
+     * @return                   A map containing the selected action / mode and payload.
      */
     protected abstract Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation);
 
@@ -96,14 +98,7 @@ public abstract class WithinDayReplanner {
     public abstract Map<Id<Person>, WithinDayAgentExperience> getAgentExperiences();
 
     /**
-     * Executes the complete within-day mode replanning workflow for a given agent:
-     * <ol>
-     * <li>Validates that the agent is currently positioned at an activity.</li>
-     * <li>Extracts environmental state observations and demographic attributes.</li>
-     * <li>Transmits state payload to the serving decision model via HTTP POST.</li>
-     * <li>Updates the agent's active executed plan with the newly assigned trip mode.</li>
-     * <li>Registers vehicle assets in QSim if required by the new mode.</li>
-     * </ol>
+     * Replans the agent's next trip based on current state observations and external action determination.
      *
      * @param agent          The MATSim simulation agent undergoing replanning.
      * @param sim            The active queue simulation instance.
@@ -147,14 +142,13 @@ public abstract class WithinDayReplanner {
     }
 
     /**
-     * Default implementation for processing post-trip simulation step feedback.
-     * Can be overridden by concrete subclasses (e.g., RL models) for custom reward and Q-value processing.
+     * Processes post-trip simulation step feedback.
+     * Can be overridden by concrete subclasses for custom reward processing.
      *
-     * @param agent          The MATSim simulation agent completing the trip.
-     * @param sim            The active queue simulation instance.
-     * @param completedTrip  The completed trip leg structure containing performance metrics.
-     * @param simulationTime Current simulation timestamp in seconds from midnight.
-     * @return Status string response from feedback processing (e.g., "COMPLETED" or raw JSON response).
+     * @param agent                     The MATSim simulation agent completing the trip.
+     * @param sim                       The active queue simulation instance.
+     * @param simulationTime            Current simulation timestamp in seconds from midnight.
+     * @param rescheduleActivityEndTime Flag indicating whether to reschedule activity end.
      */
     public void step(MobsimAgent agent, QSim sim, double simulationTime, boolean rescheduleActivityEndTime) {
         Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
@@ -239,46 +233,44 @@ public abstract class WithinDayReplanner {
     }
 
     /**
-     * Method specifying the HTTP decision endpoint on the Python server.
-     * Subclasses override this method to route requests to custom serving models.
-     *
-     * @return Endpoint URL path string (default is "/decision/mode-choice").
-     */
-    protected String getDecisionEndpoint() {
-        return "/decision/mode_choice";
-    }
-
-    /**
-     * Method specifying the HTTP decision endpoint on the Python server.
-     * Subclasses override this method to route requests to custom serving models.
-     *
-     * @return Endpoint URL path string (default is "/decision/mode-choice").
-     */
-    protected String getRewardFeedbackEndpoint() {
-        return "/feedback/score";
-    }
-
-    /**
+     * Determines whether the current simulation iteration is designated for model training.
      * 
-     * @param agent
-     * @return
+     * @param iteration The current simulation iteration index.
+     * @return True if training is active for this iteration, false otherwise.
+     */
+    protected boolean isTrainingIteration(int iteration) {return true;}
+
+    /**
+     * Determines whether model state checkpoints or weights should be saved during this iteration.
+     * 
+     * @param iteration The current simulation iteration index.
+     * @return True if a checkpoint should be saved, false otherwise.
+     */
+    protected boolean isCheckpointInterval(int iteration){return false;}
+
+    /**
+     * Identifies and retrieves the most recently completed trip for a given simulation agent 
+     * by comparing destination activities against the agent's current plan position.
+     * 
+     * @param agent The MATSim simulation agent.
+     * @return The completed {@link Trip} object, or null if no matching trip is found.
      */
     protected Trip findCompletedTrip(MobsimAgent agent) {
         Plan executedPlan = WithinDayAgentUtils.getModifiablePlan(agent);
         List<Trip> trips = TripStructureUtils.getTrips(executedPlan);
 
         for (Trip trip : trips) {
-            if (trip.getDestinationActivity().equals(WithinDayAgentUtils.getCurrentPlanElement(agent))) {
-                return trip;
-            }
+            if (trip.getDestinationActivity().equals(WithinDayAgentUtils.getCurrentPlanElement(agent))) {return trip;}
         }
         return null;
     }
 
     /**
+     * Extracts operational performance metrics (distance, travel time, active mode, and transfers) 
+     * from a completed trip leg structure.
      * 
-     * @param agent
-     * @return
+     * @param completedTrip The completed trip instance to analyze.
+     * @return A map containing aggregated trip metrics.
      */
     protected Map<String, Object> extractTripMetrics(Trip completedTrip) {
         double totalTripDistance = 0;
@@ -289,9 +281,7 @@ public abstract class WithinDayReplanner {
         for (Leg leg : legsInTrip) {
             totalTripDistance += leg.getRoute().getDistance();
             totalTripTravelTime += leg.getTravelTime().orElse(0.0);
-            if (!leg.getMode().contains("walk")) {
-                currentModeUsed = leg.getMode();
-            }
+            if (!leg.getMode().contains("walk")) {currentModeUsed = leg.getMode();}
         }
 
         Map<String, Object> metrics = new HashMap<>();
@@ -303,8 +293,10 @@ public abstract class WithinDayReplanner {
     }
 
     /**
-     * Default reporting hook. Subclasses can override this to write 
-     * to different reporters (e.g., Custom vs WithinDay reporting).
+     * Default iteration reporting hook. Subclasses can override this method to route 
+     * performance statistics to custom reporting engines or standard loggers.
+     * 
+     * @param event The iteration ends event containing iteration metadata.
      */
     protected void handleIterationReporting(IterationEndsEvent event) {
         if (this.agentExperiences != null && !this.agentExperiences.isEmpty()) {
@@ -312,25 +304,26 @@ public abstract class WithinDayReplanner {
         }
     }
 
+    /**
+     * Utility used for modifying upcoming agent itineraries prior to activity completion.
+     */
     public void initEditTrips() {
         // lazy instantiation of EditTrips
         if (editTrips == null) {
-            // internalInterface is null on purpose. This is only needed if current legs are replanned. But we are replacing future trips only (i.e. before activity ends).
             editTrips = new EditTrips(router, scenario, null, timeInterpretation);
         }
     }
 
     /**
-     * Method to reset internal states or observer caches at iteration boundaries.
-     *
-     * @param iteration The index of the iteration currently starting.
+     * Resets internal replanner states, clears experience caches, and triggers end-of-iteration 
+     * reporting procedures.
+     * 
+     * @param event The iteration ends event containing current iteration parameters.
      */
     public void reset(IterationEndsEvent event) {
         int iteration = event.getIteration();
 
-        if (this.customObserver != null) {
-            this.customObserver.reset();
-        }
+        if (this.customObserver != null) {this.customObserver.reset();}
 
         handleIterationReporting(event);
         this.agentExperiences.clear();

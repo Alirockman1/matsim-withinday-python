@@ -1,12 +1,13 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.responses import PlainTextResponse
 
 from python_matsim_bridge import BaseSimulationBridgeService, load_bridge_service
 from Models import ObserverData, ArrivalData
 
+# Configure module-level logger
 logging.basicConfig(level="INFO", format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("matsim_bridge")
 
@@ -14,9 +15,13 @@ logger = logging.getLogger("matsim_bridge")
 active_service_instance: Optional[BaseSimulationBridgeService] = load_bridge_service()
 
 def get_bridge_service_optional() -> Optional[BaseSimulationBridgeService]:
+    """Dependency provider that returns the optional active bridge service instance."""
+
     return active_service_instance
 
 def get_bridge_service() -> BaseSimulationBridgeService:
+    """Dependency provider that enforces an active bridge service, raising 503 if in baseline mode."""
+
     if active_service_instance is None:
         raise HTTPException(
             status_code=503, 
@@ -26,6 +31,10 @@ def get_bridge_service() -> BaseSimulationBridgeService:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Manages application startup and shutdown lifecycle events, 
+    logging initialization modes and persisting state checkpoints upon shutdown."""
+
     logger.info("Starting MATSim Generic Simulation Bridge API...")
     if active_service_instance:
         logger.info("Bridge service active.")
@@ -38,24 +47,30 @@ async def lifespan(app: FastAPI):
         logger.info("Persisting session checkpoints before shutdown...")
         active_service_instance.checkpoint_state()
 
+
 app = FastAPI(
     title="MATSim Simulation Bridge API",
-    lifespan=lifespan
-)
+    lifespan=lifespan)
 
-@app.get("/healthz", status_code=status.HTTP_200_OK)
+# ==========================================
+# Global Network & Session Endpoints
+# ==========================================
+
+@app.get("/global/healthz", status_code=status.HTTP_200_OK)
 def health_check():
+    """Performs a health check on the bridge service and reports operational status."""
+
     return {
         "status": "ok", 
         "service": "matsim_simulation_bridge",
         "baseline_mode": active_service_instance is None
     }
 
-@app.post("/session/configure", status_code=status.HTTP_200_OK)
-def configure_session(
-    config_data: dict, 
-    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)
-):
+@app.post("/global/session/configure", status_code=status.HTTP_200_OK)
+def configure_session(config_data: dict, 
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Configures active simulation session parameters."""
+
     if service is None:
         logger.info("Baseline mode: skipping session configuration.")
         return {"status": "skipped_baseline"}
@@ -65,69 +80,92 @@ def configure_session(
         logger.error(f"Configuration error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/decision/mode_choice")
-def request_decision(
-    observation: ObserverData, 
-    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)
-):
+@app.post("/global/session/checkpoint/{iteration}", status_code=status.HTTP_200_OK)
+async def trigger_checkpoint(iteration: int,
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Persists model checkpoints for the specified simulation iteration."""
+
     if service is None:
-        # Fallback default choice for baseline mode
-        return {"response": "car"}
+        return {"status": "skipped_baseline"}
     try:
-        decision = service.request_decision(observation)
+        print(iteration)
+
+        if iteration is None:
+            raise HTTPException(status_code=400, detail="Missing 'iteration' in payload.")
+            
+        # Pass the extracted integer to your checkpoint service
+        if service.checkpoint_state(iteration):
+            return {"status": "checkpoint_saved", "iteration": iteration}
+            
+        raise HTTPException(status_code=500, detail="Failed to save checkpoint.")
+    except Exception as e:
+        logger.error(f"Checkpoint failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/global/session/metrics", status_code=status.HTTP_200_OK)
+def get_metrics(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Retrieves current session and performance metrics."""
+
+    if service is None:
+        return {"metrics": "unavailable_in_baseline_mode"}
+    return service.get_service_metrics()
+
+@app.post("/global/reset/iteration_memory", status_code=status.HTTP_200_OK)
+def reset_temporary_memory_route(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Resets temporary episode or iteration memory buffers."""
+
+    if service is None:
+            return {"status": "skipped_baseline"}
+    try:
+        return service.reset_episode()
+    except Exception as e:
+        logger.error(f"Memory reset failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# Agent-Specific Endpoints
+# ==========================================   
+
+@app.post("/agent/{agent_tag}/action/mode_choice", status_code=status.HTTP_200_OK)
+def request_decision(agent_tag: int,
+    observation: ObserverData, 
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Requests a transport mode choice decision for a specific agent based on current observations."""
+
+    if service is None:
+        return {"response": "pedestrian"}
+    try:
+        decision = service.request_decision(agent_tag, observation)
         return {"response": decision}
     except Exception as e:
         logger.error(f"Decision resolution failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/feedback/score", status_code=status.HTTP_200_OK)
-def process_feedback(
+@app.post("/agent/{agent_tag}/feedback/score", status_code=status.HTTP_200_OK)
+def process_feedback(agent_tag: int,
     feedback: ArrivalData, 
-    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)
-):
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Processes arrival feedback and reward scoring for a specific agent."""
+    
     if service is None:
         return {"status": "ignored_baseline"}
     try:
-        service.process_feedback(feedback)
+        service.process_feedback(agent_tag, feedback)
         return {"status": "update successful"}
     except Exception as e:
         logger.error(f"Feedback execution failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/policy/update", status_code=status.HTTP_200_OK)
-def update_policy_route(
-    payload: dict, # or a custom Pydantic model
-    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)
-):
+@app.post("/agent/{agent_tag}/policy/update", status_code=status.HTTP_200_OK)
+def update_policy_route(agent_tag: int,
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Triggers policy updates for a specific agent."""
+
     if service is None:
         return {"status": "skipped_baseline"}
     try:
-        agent_id = payload.get("agentID")
-        return service.call_update_policy(agent_id)
+        return service.call_update_policy(agent_tag)
     except Exception as e:
         logger.error(f"Policy update failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/session/checkpoint", status_code=status.HTTP_200_OK)
-def trigger_checkpoint(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
-    if service is None:
-        return {"status": "skipped_baseline"}
-    if service.checkpoint_state():
-        return {"status": "checkpoint_saved"}
-    raise HTTPException(status_code=500, detail="Failed to save checkpoint.")
-
-@app.get("/session/metrics", status_code=status.HTTP_200_OK)
-def get_metrics(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
-    if service is None:
-        return {"metrics": "unavailable_in_baseline_mode"}
-    return service.get_service_metrics()
-
-@app.get("/reset/iteration_memory", status_code=status.HTTP_200_OK)
-def reset_temporary_memory_route(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
-    if service is None:
-            return {"status": "skipped_baseline"}
-    try:
-        return service.reset_memory_history() # or service.reset_iteration_memory() depending on your method name
-    except Exception as e:
-        logger.error(f"Memory reset failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))

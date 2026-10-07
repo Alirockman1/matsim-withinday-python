@@ -5,7 +5,8 @@
     <module name="agentModeChoice">
         <param name="modelType" value="QLearning" />
         <param name="autoEncoderModel" value="matsim_binary_encoder_dim15.onnx" />
-        <param name="saveInterval" value="10" /> 
+        <param name="saveInterval" value="1" /> 
+        <param name="validationInterval" value="5" /> 
         <param name="trainingCutoffIteration" value="800" /> 
         <param name="alpha" value="0.1" />
         <param name="gamma" value="0.9" />

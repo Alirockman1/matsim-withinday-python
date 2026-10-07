@@ -1,7 +1,4 @@
-def update_reward(data, agent_trip_memory):
-    reward   = data.reward
-    matsim_score = data.matsimScore
-    print(f"The reward being updated is {reward}")
+def update_reward(reward, matsim_score, agent_trip_memory):
     agent_trip_memory["reward_history"].append(reward)
 
 

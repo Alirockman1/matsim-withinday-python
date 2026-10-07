@@ -18,6 +18,7 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
     private String modelType;
     private String autoEncoderModel = "";
     private int saveInterval = 1;
+    private int validationInterval = 1;
     private double discontinuityPenalty = 1.0;
     private double retrievalCostPenalty = 1.5;
 
@@ -92,6 +93,12 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
 
     @StringSetter("saveInterval")
     public void setSaveInterval(int saveInterval) { this.saveInterval = saveInterval; }
+
+    @StringGetter("validationInterval")
+    public int getValidationInterval() { return validationInterval; }
+
+    @StringSetter("validationInterval")
+    public void setValidationInterval(int validationInterval) { this.validationInterval = validationInterval; }
 
     @StringGetter("discontinuityPenalty")
     public double getDiscontinuityPenalty() { return discontinuityPenalty; }
