@@ -23,3 +23,7 @@ dependency-reduced-pom.xml
 
 # The docker zip folders
 *.tar
+
+# HPC shell scrips
+run_matsim_random_HPC.sh
+run_matsim_RL_HPC.sh

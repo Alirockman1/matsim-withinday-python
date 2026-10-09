@@ -27,11 +27,14 @@ import com.google.inject.Inject;
 public class RandomModeChoiceReplanner extends WithinDayReplanner {
 
     private final Random randomGenerator = new Random(42);
+    protected final CommunicationManager communicationManager;
 
     @Inject
     public RandomModeChoiceReplanner(Scenario scenario, TripRouter router, TimeInterpretation timeInterpretation,
                                       WithinDayObserver customObserver, CommunicationManager communicationManager) {
-        super(scenario, router, timeInterpretation, customObserver, communicationManager);
+        super(scenario, router, timeInterpretation, customObserver);
+        this.communicationManager = communicationManager;
+
     }
 
     @Override

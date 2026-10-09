@@ -46,9 +46,9 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
 
     private static final Logger log = LogManager.getLogger(WithinDayModeChoiceListener.class);
 
-    @Inject TripRouter router;
+    //@Inject TripRouter router;
     @Inject Scenario scenario;
-    @Inject CommunicationManager pythonCommunicationManager;
+    //@Inject CommunicationManager pythonCommunicationManager;
     @Inject WithinDayReplanner customReplanner;
     @Inject WithinDayObserver customObserver;
     @Inject WithinDayConfigGroup configGroup;

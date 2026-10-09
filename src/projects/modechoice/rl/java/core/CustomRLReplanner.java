@@ -33,7 +33,6 @@ import org.matsim.withinday.utils.WithinDayConfigGroup;
 import modechoice.rl.java.utils.CustomConfigGroup;
 import modechoice.rl.java.utils.CustomIterationEndReporting;
 
-import com.google.gson.Gson;
 import com.google.inject.Inject;
 
 /**
@@ -43,6 +42,7 @@ import com.google.inject.Inject;
 public class CustomRLReplanner extends WithinDayReplanner {
 
     protected final CustomConfigGroup customConfigGroup;
+    protected final CommunicationManager communicationManager;
 
     /**
      * Constructor for CustomRLReplanner.
@@ -57,7 +57,8 @@ public class CustomRLReplanner extends WithinDayReplanner {
     public CustomRLReplanner(Scenario scenario, TripRouter router, TimeInterpretation timeInterpretation,
                               WithinDayObserver customObserver, CommunicationManager pythonCommunicationManager, 
                               CustomConfigGroup customConfigGroup) {
-        super(scenario, router, timeInterpretation, customObserver, pythonCommunicationManager);
+        super(scenario, router, timeInterpretation, customObserver);
+        this.communicationManager = pythonCommunicationManager;
         this.customConfigGroup = customConfigGroup;
     }
 

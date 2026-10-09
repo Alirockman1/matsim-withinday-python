@@ -26,7 +26,6 @@ import org.matsim.withinday.environment.AgentAssetInventory;
 import org.matsim.withinday.environment.StateEngine;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.environment.WithinDayRealTimeScoringEngine;
-import org.matsim.withinday.networking.CommunicationManager;
 import org.matsim.withinday.utils.EditTrips;
 import org.matsim.withinday.utils.IterationEndReporting;
 import org.matsim.withinday.utils.WithinDayAgentExperience;
@@ -47,7 +46,6 @@ public abstract class WithinDayReplanner {
     protected final TripRouter router;
     protected final TimeInterpretation timeInterpretation;
     protected final WithinDayObserver customObserver;
-    protected final CommunicationManager communicationManager;
     protected final Gson gson = new Gson();
     protected final Map<Id<Person>, WithinDayAgentExperience> agentExperiences = new HashMap<>();
 
@@ -60,15 +58,13 @@ public abstract class WithinDayReplanner {
      * @param router                     Trip router utility used by EditTrips.
      * @param timeInterpretation         Time interpretation rules for routing.
      * @param customObserver             Observer for extracting environment states and trip scores.
-     * @param pythonCommunicationManager HTTP communication manager for external decision models.
      */
     public WithinDayReplanner(Scenario scenario, TripRouter router, TimeInterpretation timeInterpretation,
-                              WithinDayObserver customObserver, CommunicationManager pythonCommunicationManager) {
+                              WithinDayObserver customObserver) {
         this.scenario = scenario;
         this.router = router;
         this.timeInterpretation = timeInterpretation;
         this.customObserver = customObserver;
-        this.communicationManager = pythonCommunicationManager;
 
         AgentAssetInventory.setSimulationBasedModes(scenario);
         StateEngine.setNetworkCentroid(scenario.getNetwork());
@@ -89,6 +85,9 @@ public abstract class WithinDayReplanner {
      * @return                   A map containing the selected action / mode and payload.
      */
     protected abstract Map<String, Object> determineAction(MobsimAgent agent, Trip nextTrip, Map<String, Object> agentDemographics, Map<String, Object> stateObservation);
+        // Change it from abstract to defualt -> select mode defined as the next mode in the trip plans
+
+        // To add: in the startup ensure the tourbasedmodechoice from matsim is enabled -> 30% exploration and 70% best choice
 
     /**
      * Optional accessor for agent experience tracking metrics.

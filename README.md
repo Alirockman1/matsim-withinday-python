@@ -145,11 +145,11 @@ A Python runner (`withinday.core.pymatsim` and `withinday.core.nodes.WorkerNode`
 ## Quick Start
 
 ```bash
-git clone -b develop https://github.com/Alirockman1/matsim-withinday-python.git
+git clone -b development https://github.com/Alirockman1/matsim-withinday-python.git
 cd matsim-withinday-python
 ```
 
-Already cloned? Switch with `git checkout develop`.
+Already cloned? Switch with `git checkout development`.
 
 Then follow either [Running Locally](#running-locally) or [Running with Docker](#running-with-docker).
 
@@ -163,7 +163,7 @@ Replace `<MainClass>` with the fully qualified class containing your `main` meth
 **Linux / macOS**
 
 ```bash
-export JAVA_HOME="/opt/jdk-25"
+export JAVA_HOME="/opt/jdk-25" # Replace place holder with location of java bin folder
 export PYTHONPATH="$PWD/src/main/python:$PWD/src/projects"
 export PATH="${JAVA_HOME}/bin:${PATH}"
 export MATSIM_OUTPUT_BASE="$PWD/scenarios/<scenario>/output/"
@@ -175,14 +175,40 @@ export SERVICE_CLASS="<project_name>.python.networking.bridge_service.<Service>"
 **Windows (PowerShell)**
 
 ```powershell
-$env:JAVA_HOME = "C:\path\to\jdk-25"
+$env:JAVA_HOME = "C:\path\to\jdk-25" # Replace with location of java bin folder
 $env:PYTHONPATH = "$PWD\src\main\python;$PWD\src\projects"
 $env:PATH = "$env:JAVA_HOME\bin;" + $env:PATH
 $env:MATSIM_OUTPUT_BASE = "$PWD\scenarios\<scenario>\output\"
 $env:SERVICE_CLASS = "<project_name>.python.networking.bridge_service.<Service>"
 ```
 
-### 2. Install Python dependencies
+**Note:** Additionally an *env* file can be used to set up the environment parameters.
+
+### 2. Install Python dependencies (only for the first time setting the project)
+Install the dependencies in a virtual environment rather than into your system Python. This keeps the setup reproducible. **Python 3.12 is required.**
+
+
+> **One-time setup.** Creating the environment and installing the dependencies only needs to be done **the first time**. In every later session you only need to [activate the environment](#activate-the-environment-every-new-terminal).
+
+#### Linux
+
+```bash
+# Debian/Ubuntu: the venv module is a separate package (if not already installed)
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.12 python3.12-venv
+
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+#### Windows
+```bash
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+After activating the environment install all dependent packages.
 
 ```bash
 cd src/main/python
@@ -191,12 +217,25 @@ pipenv install --system --deploy --skip-lock
 pip install -e .
 cd ../../..
 ```
+#### Activate the environment (every new terminal)
+
+After the first-time setup, **only activation is needed**. Do this in each new terminal, from the repository root, before starting the Java side:
+
+| OS | Command |
+|----|---------|
+| Linux / macOS | `source .venv/bin/activate` |
+| Windows (PowerShell) | `.venv\Scripts\Activate.ps1` |
+| Windows (cmd) | `.venv\Scripts\activate.bat` |
+
+
+Run the full setup again only if you delete `.venv`, switch Python versions, or the dependencies change (for example after pulling updates that modify `Pipfile` or `Pipfile.lock`).
 
 ### 3. Build the Java project
 
 **Linux / macOS**
 
 ```bash
+chmod +x mvnw
 ./mvnw clean install -DskipTests
 ```
 
@@ -206,7 +245,7 @@ cd ../../..
 .\mvnw.cmd clean install -DskipTests
 ```
 
->**Note:** Check where the jar was created (e.g. `ls target/*.jar`) and use that file in the next step.
+>**Note:** Check where the jar was created (e.g. `ls *.jar`) and use that file in the next step.
 
 ### 4. Run the simulation
 
@@ -216,7 +255,7 @@ cd ../../..
 rm -rf scenarios/<scenario>/output/project/<project_name>  
  
 java -Xmx12g -Djava.awt.headless=true \
-  -cp target/a7-rl-testbed-0.0.1-SNAPSHOT.jar \
+  -cp a7-rl-testbed-0.0.1-SNAPSHOT.jar \
   <MainClass> \
   scenarios/<scenario>/input/config.xml \
   --config:controller.outputDirectory=scenarios/<scenario>/output/project/<project_name> \
@@ -274,6 +313,7 @@ The container bundles Python 3.12, JDK 25, all Python dependencies and the simul
 **1. Build the Java project**
 
 ```bash
+chmod +x mvnw
 ./mvnw clean install -DskipTests
 ```
 
@@ -286,10 +326,18 @@ docker build -f Dockerfile.txt -t matsim-rl:development .
 ```
 
 **3. Run the container**
+
 Replace `<RUN_SCRIPT>` with the full in-container path of your project's java wrapper.
 
 ```bash
-SCENARIO=<scenario>
+SCENARIO=<scenario>        # Scenario name i.e. sioux-falls
+PROJECT=<save_folder_name> # The folder in the output directory i.e. random_choice
+REPLANNER=<YourReplanner>  # java class name i.e. RandomModeChoiceReplanner
+OBSERVER=<YourObserver>    # java class name i.e. RandomModeChoiceObserver
+RUNNER=<RUN_SCRIPT>        # Full path to the python warpper function 
+# i.e. "/app/src/projects/modechoice/random/python/core/run_random_mode_choice.py"
+
+rm -r $PWD/scenarios/$SCENARIO/output/project/$PROJECT
 
 docker run --rm -it \
   -e OBJECTIVE="single" \
@@ -299,11 +347,11 @@ docker run --rm -it \
   -e NUM_THREADS="4" \
   -e JAVA_HEAP="12g" \
   -e AGENTS_PER_ITERATION="1" \
-  -e REPLANNER_CLASS="<YourReplanner>" \
-  -e OBSERVER_CLASS="<YourObserver>" \
+  -e REPLANNER_CLASS="$REPLANNER" \
+  -e OBSERVER_CLASS="$OBSERVER" \
   -e RUN_SCRIPT="<RUN_SCRIPT>" \
   -v "$PWD/scenarios/$SCENARIO/input:/app/scenarios/$SCENARIO/input" \
-  -v "$PWD/scenarios/$SCENARIO/output:/app/scenarios/$SCENARIO/output" \
+  -v "$PWD/scenarios/$SCENARIO/output/project/$PROJECT:/app/scenarios/$SCENARIO/output" \
   -v "$PWD/shared_storage:/app/shared_storage" \
   matsim-rl:development
 ```
@@ -332,9 +380,9 @@ wsl docker run --rm -it `
   -e REPLANNER_CLASS="<YourReplanner>" `
   -e OBSERVER_CLASS="<YourObserver>" `
   -e RUN_SCRIPT="<RUN_SCRIPT>" `
-  -v "/mnt/c/path/to/repo/scenarios/<scenario>/input:/app/scenarios/<scenario>/input" `
-  -v "/mnt/c/path/to/repo/scenarios/<scenario>/output:/app/scenarios/<scenario>/output" `
-  -v "/mnt/c/path/to/repo/shared_storage:/app/shared_storage" `
+  -v "/mnt/path/to/scenarios/<scenario>/input:/app/scenarios/<scenario>/input" `
+  -v "/mnt/path/to/scenarios/<scenario>/output/project:/app/scenarios/<scenario>/output" `
+  -v "/mnt/path/to/shared_storage:/app/shared_storage" `
   matsim-rl:development
 ```
 
@@ -426,13 +474,15 @@ Projects live in `src/projects/<project_name>/`, split into a Java and a Python 
 
 5. **Run it** by passing your custom `MainClass`, `Service`, `REPLANNER`, `OBSERVER` classses, and defining the project `<scenario>` / `<project_name>` folders as shown in either [Running Locally](#running-locally) or with the additional wrapper (`RUN_SCRIPT`) in [Running with Docker](#running-with-docker).
 
-> **Note:** A new instance **wipes the output folder** before running. Back up results you want to keep.
+> **Warning:** Each new run **deletes the contents of the output folder** before it starts. Back up any results you want to keep.
+
+> **Note:** New projects are encouraged to follow this structure: each one should include its own `README.md` with setup and run instructions, and an environment file (`env.sh` for Linux/macOS, `env.ps1` for Windows) so others can reproduce the setup easily.
 
 ---
 
 ## Output
 
-Results are written to `MATSIM_OUTPUT_BASE` (inside Docker, the mounted `scenarios/<network>/output` folder). `shared_storage/` is mounted for data that should persist or be shared across runs, such as trained models or logs.
+Results are written to `MATSIM_OUTPUT_BASE` (inside Docker, the mounted `scenarios/<scenario>/output/...` folder). `shared_storage/` is mounted for data that should persist or be shared across runs, such as trained models or logs.
 
 ---
 
@@ -447,6 +497,7 @@ Results are written to `MATSIM_OUTPUT_BASE` (inside Docker, the mounted `scenari
 | `docker: Cannot connect to the Docker daemon` (Windows) | Run `wsl -u root service docker start`. |
 | `OutOfMemoryError` | Increase `JAVA_HEAP` / `-Xmx`. |
 | Output folder unexpectedly empty (Windows) | `run_test.ps1` wipes it in `single` mode by design. |
+| Linux: Output folder is being used by another process | The output file needs to be deleted before restarting the same run. |
 
 ---
 
