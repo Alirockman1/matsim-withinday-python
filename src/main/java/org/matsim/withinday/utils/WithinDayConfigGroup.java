@@ -11,11 +11,14 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
     public static final String GROUP_NAME = "withinday";
 
     private static String externalModelFileName = "";
+    private static String dataset = "train";
+    private static String modes;
+    private static String tourModesList;
+
     private int agentsPerIteration = 1;
     private String trainAgentIDList = "";
     private double samplingPercentage = 1.0;
-    private static String modes;
-    private static String tourModesList;
+
     private String replanner = "default";
     private String observer = "default";
 
@@ -48,6 +51,12 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
 
     @StringSetter("externalModelFileName")
     public static void setExternalModelFileName(String modelFileName) { externalModelFileName = modelFileName; }
+
+    @StringGetter("dataset")
+    public static String getDataSetType() { return dataset;}
+
+    @StringSetter("dataset")
+    public void setDataSetType(String dataSetType) { dataset = dataSetType; }
 
     @StringGetter("agentsPerIteration")
     public int getAgentsPerIteration() { return agentsPerIteration; }

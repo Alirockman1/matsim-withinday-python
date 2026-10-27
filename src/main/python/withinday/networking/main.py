@@ -44,8 +44,7 @@ async def lifespan(app: FastAPI):
     yield
     
     if active_service_instance:
-        logger.info("Persisting session checkpoints before shutdown...")
-        active_service_instance.checkpoint_state()
+        logger.info("Bridge Shutdown...")
 
 
 app = FastAPI(
@@ -57,7 +56,7 @@ app = FastAPI(
 # ==========================================
 
 @app.get("/global/healthz", status_code=status.HTTP_200_OK)
-def health_check():
+def health_check_route():
     """Performs a health check on the bridge service and reports operational status."""
 
     return {
@@ -67,7 +66,7 @@ def health_check():
     }
 
 @app.post("/global/session/configure", status_code=status.HTTP_200_OK)
-def configure_session(config_data: dict, 
+def configure_session_route(config_data: dict, 
     service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
     """Configures active simulation session parameters."""
 
@@ -81,15 +80,13 @@ def configure_session(config_data: dict,
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/global/session/checkpoint/{iteration}", status_code=status.HTTP_200_OK)
-async def trigger_checkpoint(iteration: int,
+async def trigger_checkpoint_route(iteration: int,
     service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
     """Persists model checkpoints for the specified simulation iteration."""
 
     if service is None:
         return {"status": "skipped_baseline"}
     try:
-        print(iteration)
-
         if iteration is None:
             raise HTTPException(status_code=400, detail="Missing 'iteration' in payload.")
             
@@ -110,6 +107,19 @@ def get_metrics(service: Optional[BaseSimulationBridgeService] = Depends(get_bri
         return {"metrics": "unavailable_in_baseline_mode"}
     return service.get_service_metrics()
 
+@app.post("/global/session/shared_policy/update", status_code=status.HTTP_200_OK)
+def update_shared_policy_route(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Retrieves current session and performance metrics."""
+
+    if service is None:
+        return {"status": "skipped_baseline"}
+    try:
+        #print(service.update_shared_policy(True, False))
+        return {"response": "shared_policy_updated"}
+    except Exception as e:
+        logger.error(f"Shared policy update failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/global/reset/iteration_memory", status_code=status.HTTP_200_OK)
 def reset_temporary_memory_route(service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
     """Resets temporary episode or iteration memory buffers."""
@@ -127,22 +137,31 @@ def reset_temporary_memory_route(service: Optional[BaseSimulationBridgeService] 
 # ==========================================   
 
 @app.post("/agent/{agent_tag}/action/mode_choice", status_code=status.HTTP_200_OK)
-def request_decision(agent_tag: int,
+def request_decision_route(agent_tag: int,
     observation: ObserverData, 
-    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional),
+    dataset = "train"):
     """Requests a transport mode choice decision for a specific agent based on current observations."""
 
     if service is None:
         return {"response": "pedestrian"}
     try:
-        decision = service.request_decision(agent_tag, observation)
+        decision = service.request_decision(agent_tag, dataset, observation)
         return {"response": decision}
     except Exception as e:
         logger.error(f"Decision resolution failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/agent/{agent_tag}/action/mode_choice/test", status_code=status.HTTP_200_OK)
+def request_decision_test_route(agent_tag: int,
+    observation: ObserverData, 
+    service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
+    """Requests a transport mode choice decision for evaluation."""
+
+    return request_decision_route(agent_tag, observation, service, "test")
+
 @app.post("/agent/{agent_tag}/feedback/score", status_code=status.HTTP_200_OK)
-def process_feedback(agent_tag: int,
+def process_feedback_route(agent_tag: int,
     feedback: ArrivalData, 
     service: Optional[BaseSimulationBridgeService] = Depends(get_bridge_service_optional)):
     """Processes arrival feedback and reward scoring for a specific agent."""

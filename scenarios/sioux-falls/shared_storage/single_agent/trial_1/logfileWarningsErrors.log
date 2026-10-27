@@ -1,0 +1,55 @@
+2026-10-19T14:02:59,191  WARN ScoringConfigGroup$ScoringParameterSet:1638 marginal utl of wait set to: -0.84. Setting this different from zero is discouraged since there is already the marginal utility of time as a resource. The parameter was also used in the past for pt routing; if you did that, consider setting the new parameter waitingPt instead.
+2026-10-19T14:02:59,275  WARN XY2LinksForFacilities:51 There is no link for at least a facility. Assigning links for such facilities from coords.
+2026-10-19T14:02:59,280  WARN XY2LinksForFacilities:52  This message given only once.
+2026-10-19T14:02:59,470  WARN PrepareForSimImpl:269 'usePersonIdForMissingVehicleId' is deprecated. It will be removed soon. Use
+2026-10-19T14:02:59,473  WARN PrepareForSimImpl:270 		config.qsim().setUsePersonIdForMissingVehicleId( false );
+2026-10-19T14:02:59,477  WARN PrepareForSimImpl:271 in code, and 
+2026-10-19T14:02:59,481  WARN PrepareForSimImpl:272 	<module name="qsim" >
+2026-10-19T14:02:59,487  WARN PrepareForSimImpl:273 		<param name="usePersonIdForMissingVehicleId" value="false" />
+2026-10-19T14:02:59,492  WARN PrepareForSimImpl:274 in the config xml.
+2026-10-19T14:03:02,605  WARN QueueWithBuffer:515 Link 237059098_1_sidewalk too small: enlarge storage capacity from: 0.27775 Vehicles to: 2.8253834590384614 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,609  WARN QueueWithBuffer:515 Link 9902762_1_sidewalk too small: enlarge storage capacity from: 2.6995486933333335 Vehicles to: 43.25767209076923 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,611  WARN QueueWithBuffer:515 Link 73803813_1_sidewalk too small: enlarge storage capacity from: 5.797440253333334 Vehicles to: 92.8984055978846 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,613  WARN QueueWithBuffer:515 Link 9905412_0_r_sidewalk too small: enlarge storage capacity from: 1.3395424533333333 Vehicles to: 21.46487979307692 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,616  WARN QueueWithBuffer:515 Link 236805320_2L3_sidewalk too small: enlarge storage capacity from: 6.35116548 Vehicles to: 101.77131992711537 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,619  WARN QueueWithBuffer:515 Link 237172233_0_sidewalk too small: enlarge storage capacity from: 6.341838840000001 Vehicles to: 101.62186948903846 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,623  WARN QueueWithBuffer:515 Link 237784508_4_r_sidewalk too small: enlarge storage capacity from: 5.359066386666667 Vehicles to: 85.8738858978846 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,625  WARN QueueWithBuffer:515 Link 9904814_7_rL1_sidewalk too small: enlarge storage capacity from: 5.408024080000001 Vehicles to: 86.65838585884615 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,628  WARN QueueWithBuffer:515 Link 9903665_2_r_sidewalk too small: enlarge storage capacity from: 2.6288444533333335 Vehicles to: 42.12470462961538 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,631  WARN QueueWithBuffer:515 Link 236796987_5_sidewalk too small: enlarge storage capacity from: 2.8883091600000004 Vehicles to: 46.28237706865385 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,633  WARN QueueWithBuffer:515 Link 236799143_0_sidewalk too small: enlarge storage capacity from: 1.1398134800000002 Vehicles to: 18.2644150425 Vehicles.  This is not fatal, but modifies the traffic flow dynamics.
+2026-10-19T14:03:02,636  WARN QueueWithBuffer:518 Additional warnings of this type are suppressed.
+2026-10-19T14:03:03,206  WARN EditTrips:96 InternalInterface is null. Replanning of pt/transit legs will not work properly and will likely fail.
+2026-10-19T14:03:03,213  WARN EditTrips:114 no TransitStopAgentTracker found in qsim. Replanning of pt/transit legs will not work properly and will likely fail.
+2026-10-19T14:04:33,241  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:06:23,754  WARN ExperiencedPlansServiceImpl:100 agentsRecords.size=8385
+2026-10-19T14:06:23,812  WARN ObjectAttributesConverter:96 No AttributeConverter found for class org.matsim.api.core.v01.Id$IdImpl. Not all attribute values can be converted.
+2026-10-19T14:08:06,616  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:09:11,025  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal bike use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:12:04,761  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:12:58,932  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:14:56,284  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:16:08,892  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal bike use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:20:55,466  WARN AgentAssetInventory:135 BIKE ABANDONED at 157789593_0. Time: 3581.851060139351
+2026-10-19T14:24:35,664  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:24:35,667  WARN AgentAssetInventory:135 BIKE ABANDONED at 157789593_0. Time: 3581.851060139351
+2026-10-19T14:27:10,225  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal bike use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:28:06,851  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:34:41,993  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:36:03,890  WARN AgentAssetInventory:135 BIKE ABANDONED at 157789593_0. Time: 3581.851060139351
+2026-10-19T14:39:43,973  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:42:51,723  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T14:44:02,876  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208
+2026-10-19T14:46:53,482  WARN AgentAssetInventory:369 RL MODE CHOICE: Illegal car use for the agent (10047_1). Asset remains at previous location.
+2026-10-19T14:46:53,484  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T14:47:59,994  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208
+2026-10-19T15:03:21,323  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T15:04:24,941  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208
+2026-10-19T15:16:02,596  WARN AgentAssetInventory:135 BIKE ABANDONED at 157789593_0. Time: 3581.851060139351
+2026-10-19T15:19:30,606  WARN AgentAssetInventory:135 BIKE ABANDONED at 157789593_0. Time: 3581.851060139351
+2026-10-19T15:22:12,275  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T15:23:04,685  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208
+2026-10-19T15:44:51,272  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T15:45:43,740  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208
+2026-10-19T16:12:05,984  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 2746.4585477856585
+2026-10-19T16:13:05,643  WARN AgentAssetInventory:135 BIKE ABANDONED at 238011045_1. Time: 855.8032326399208

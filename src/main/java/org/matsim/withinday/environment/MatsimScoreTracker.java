@@ -130,16 +130,11 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
      */
     public double consumeStepScore(Id<Person> agentId) {
         ScoringFunction scoringFunction = this.scoringFunctions.get(agentId);
-        if (scoringFunction == null) {
-            return 0.0;
-        }
+        if (scoringFunction == null) {return 0.0;}
 
         double currentScore = scoringFunction.getScore();
         double previousScore = this.lastReadScore.getOrDefault(agentId, 0.0);
         this.lastReadScore.put(agentId, currentScore);
-
-        System.out.println("The matsim score upto this leg from the inbuilt scorer is: " + currentScore);
-        System.out.println("The score for the previous leg was: " + previousScore);
         
         return currentScore - previousScore;
     }
@@ -155,19 +150,16 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
      */
     public double finishDay(Id<Person> agentId, Activity lastActivity, double arrivalTime) {
         ScoringFunction scoringFunction = this.scoringFunctions.get(agentId);
-        if (scoringFunction == null) {
-            return 0.0;
-        }
+        if (scoringFunction == null) {return 0.0;}
 
         if (this.finishedAgents.add(agentId)) {
             Activity overnightActivity = PopulationUtils.createActivityFromLinkId(
-                    lastActivity.getType(), lastActivity.getLinkId());
+                    lastActivity.getType(), lastActivity.getLinkId()
+            );
             overnightActivity.setFacilityId(lastActivity.getFacilityId());
-            if (lastActivity.getCoord() != null) {
-                overnightActivity.setCoord(lastActivity.getCoord());
-            }
+            
+            if (lastActivity.getCoord() != null) {overnightActivity.setCoord(lastActivity.getCoord());}
             overnightActivity.setStartTime(arrivalTime);
-            // End time deliberately left undefined. -> WHY ???
 
             scoringFunction.handleActivity(overnightActivity);
             scoringFunction.finish();
@@ -185,9 +177,7 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
      * @param agentId The ID of the agent to check.
      * @return True if the agent is tracked, false otherwise.
      */
-    public boolean isTracked(Id<Person> agentId) {
-        return this.scoringFunctions.containsKey(agentId);
-    }
+    public boolean isTracked(Id<Person> agentId) {return this.scoringFunctions.containsKey(agentId);}
 
     /**
      * Intercepts experienced activity events and feeds them to the agent's scoring function and scratch plan.
@@ -289,7 +279,7 @@ public class MatsimScoreTracker implements ActivityStartEventHandler, PersonMone
         if (scoringFunction != null) {
             scoringFunction.agentStuck(event.getTime());
         }
-    }
+    }   
 
     @Override
     public void reset(int iteration) {}

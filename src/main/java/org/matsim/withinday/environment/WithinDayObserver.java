@@ -17,6 +17,7 @@ import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.router.TripStructureUtils.Trip;
 import org.matsim.core.scoring.functions.ScoringParametersForPerson;
 import org.matsim.withinday.core.AgentSelector;
+import org.matsim.withinday.utils.StateEngine;
 
 import com.google.inject.Inject;
 
@@ -123,6 +124,38 @@ public abstract class WithinDayObserver {
     public int getUniqueAgentId(MobsimAgent agent){
         String agentIdString = agent.getId().toString();
         return agentSelector.getAgentTag(agentIdString);
+    }
+
+    /**
+     * Determines all possible transport modes available to a specific agent 
+     * based on their person attributes (e.g., car/bike availability) and simulation constraints.
+     * 
+     * @param agent The MATSim simulation agent being evaluated.
+     * @return A list of valid mode strings the agent is permitted to choose from.
+     */
+    public List<String> getAgentAvailableModes(MobsimAgent agent) {
+        Person person = scenario.getPopulation().getPersons().get(agent.getId());
+
+        if (person == null) {
+            log.warn("Agent '{}' not found in population.", agent.getId());
+            return new java.util.ArrayList<>();
+        }
+
+        // Safely wrap the collection/set into a modifiable ArrayList
+        List<String> availableModes = new java.util.ArrayList<>(AgentAssetInventory.getSimulationModes());
+
+        // Check standard mode availability (asset modes)
+        String carAvail = (String) person.getAttributes().getAttribute("car_avail");
+        boolean hasCarAccess = carAvail == null || !carAvail.trim().equalsIgnoreCase("never");
+
+        Object bikeAvailAttr = person.getAttributes().getAttribute("bike_avail");
+        boolean hasBikeAccess = bikeAvailAttr == null || !String.valueOf(bikeAvailAttr).trim().equalsIgnoreCase("never");
+
+        // Remove restricted asset modes if access is denied
+        if (!hasCarAccess) {availableModes.remove("car");}
+        if (!hasBikeAccess) {availableModes.remove("bike");}
+
+        return availableModes;
     }
 
     /**

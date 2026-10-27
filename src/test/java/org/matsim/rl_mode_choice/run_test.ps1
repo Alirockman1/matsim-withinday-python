@@ -5,16 +5,16 @@ $REPLANNER_CLASS = "CustomRLReplanner"
 $SCENARIO_NAME = "sioux-falls"
 $OBJECTIVE = "single"#"multi_agent" 
 
-$MATSIM_ITERATION = "6"
-$MAX_TRAINING_ITERATION = "5"
-$NUM_THREADS = "4"
+$MATSIM_ITERATION = "5"
+$MAX_TRAINING_ITERATION = "4"
+$NUM_THREADS = "1"
 $MEMORY = "12g"
-$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=2.59894 w_2=3.405791"
-#$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=1.0 w_2=1.0"
+#$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=2.59894 w_2=3.405791"
+$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=1.0 w_2=1.0"
 
 # Development Pipeline Toggles
 $NUM_AGENTS_PER_ITERATION = "1"
-$UPDATE_JAR = $true
+$UPDATE_JAR = $false
 $REBUILT_DOCKER = $true
 
 # Base Windows workspace directory 
@@ -85,10 +85,9 @@ $WSL_OUTPUT    = (wsl wslpath -a -u "$DOCKER_OUTPUT").Trim()
 $WSL_SHARED    = (wsl wslpath -a -u "$DOCKER_SHARED").Trim()
 
 # 5. Remove old Docker image & build fresh Docker image
-if($REBUILT_DOCKER){
-    # Create a dynamic tag name based on the current objective
-    $IMAGE_TAG = "matsim-rl:development"
+$IMAGE_TAG = "matsim-project:development"
 
+if($REBUILT_DOCKER){
     Write-Host "Removing old Docker image [$IMAGE_TAG]..." -ForegroundColor Yellow
     wsl docker rmi $IMAGE_TAG -f 2>$null
 

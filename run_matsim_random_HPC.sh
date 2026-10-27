@@ -20,6 +20,7 @@ WS_NAME="matsim"
 SCENARIO_NAME="sioux_falls"
 OBJECTIVE="single"
 
+NUM_AGENTS_PER_ITERATION="1"
 AGENT_LIST="10047_1"
 MATSIM_ITERATION="700"
 NUM_THREADS="4"
@@ -67,8 +68,8 @@ MATSIM_ROOT="$WS_PATH/RL_Mode_Choice/decenteralize_training/${SIMULATION_TYPE}"
 
 INPUT_DIRECTORY="${MATSIM_ROOT}/scenarios/${SCENARIO_NAME}/input"
 OUTPUT_DIRECTORY="${MATSIM_ROOT}/scenarios/${SCENARIO_NAME}/output/project/random_choice"
-SIF_FILE="${MATSIM_ROOT}/matsim_random_choice_v1.sif"
-DOCKER_IMAGE_PATH="${MATSIM_ROOT}/matsim_random_image.tar"
+SIF_FILE="${MATSIM_ROOT}/matsim_project_v1.sif"
+DOCKER_IMAGE_PATH="${MATSIM_ROOT}/matsim_project_image.tar"
 SHARED_DIRECTORY="${MATSIM_ROOT}/scenarios/${SCENARIO_NAME}/shared_storage"
 
 # Create log and database directories inside the high-performance workspace storage
@@ -118,14 +119,12 @@ fi
 # ==============================================================================
 echo "### Launching MATSim in the container ###"
 
-srun singularity run --containall --writable-tmpfs --cleanenv \
+srun singularity run --pwd /app --containall --writable-tmpfs --cleanenv \
     --env OBJECTIVE="$OBJECTIVE" \
     --env MATSIM_OUTPUT_BASE="/app/scenarios/$SCENARIO_NAME/output" \
     --env MATSIM_ITERATION="$MATSIM_ITERATION" \
-    --env MAX_TRAINING_ITERATION="$MAX_TRAINING_ITERATION" \
     --env NUM_THREADS="$NUM_THREADS" \
     --env JAVA_HEAP="$MEMORY" \
-    --env PARAMS="$PARAMS" \
     --env SCENARIO="$SCENARIO_NAME" \
     --env REPLANNER_CLASS="$REPLANNER_CLASS" \
     --env OBSERVER_CLASS="$OBSERVER_CLASS" \

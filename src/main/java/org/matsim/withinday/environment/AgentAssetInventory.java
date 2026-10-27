@@ -380,19 +380,24 @@ public class AgentAssetInventory {
      */
     private static Map<String, Integer> modeDiscontinuityPenalty(Id<Link> currentLinkID, Id<Person> agentId) {
         Map<String, Id<Link>> previousInventorySnapshot = new HashMap<>(AgentAssetInventory.getModeLocation(agentId));
-
         Map<String, Integer> penaltyMap = new HashMap<>();
 
         if (previousInventorySnapshot == null) return penaltyMap;
 
         for (Map.Entry<String, Id<Link>> entry : previousInventorySnapshot.entrySet()) {
             String mode = entry.getKey();
-            Id<Link> location = entry.getValue();
+            Id<Link> modeLocation = entry.getValue();
             int penalty;
 
-            if (location.equals(DUMMY_RESTRICTED_LINK)) {
-                penalty = 1;
-            } else if (location.equals(currentLinkID)) {
+            String modeLocationString = modeLocation.toString();
+            String currentAgentLocationString = currentLinkID.toString();
+
+            // The agent can be near but be initialized on the opposite side road.
+            boolean originalIdsMatch = modeLocation.equals(currentLinkID);
+            boolean strippedIdsMatch =
+                    modeLocationString.split("_")[0].equals(currentAgentLocationString.split("_")[0]);
+
+            if (originalIdsMatch || strippedIdsMatch) {
                 penalty = 0;
             } else {
                 penalty = 1;

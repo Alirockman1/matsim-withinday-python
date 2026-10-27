@@ -14,9 +14,9 @@ import org.matsim.core.mobsim.framework.MobsimAgent;
 import org.matsim.core.mobsim.qsim.QSim;
 import org.matsim.core.router.TripStructureUtils.Trip;
 import org.matsim.withinday.environment.AgentAssetInventory;
-import org.matsim.withinday.environment.StateEngine;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.environment.WithinDayRealTimeScoringEngine;
+import org.matsim.withinday.utils.StateEngine;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -45,7 +45,7 @@ public class RandomModeChoiceObserver extends WithinDayObserver {
         boolean isEndOfDay = (boolean) endOfDayResult.get("flag");
 
         // Mode set for the agent
-        List<String> availableModes = new ArrayList<>(AgentAssetInventory.getSimulationModes());
+        List<String> availableModes = super.getAgentAvailableModes(agent);
 
         // Top-Level Framework Metadata
         observation.put("simulationIteration", StateEngine.currentIteration);

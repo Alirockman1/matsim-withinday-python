@@ -39,7 +39,7 @@ class RandomBridgeService(BaseSimulationBridgeService):
             logger.info("Random model for the WithinDayReplanner initialized.")
             return {"status": "Agent Initialized"}
 
-    def request_decision(self, agent_tag: int, observation: Any):
+    def request_decision(self, agent_tag: int, dataset: str, observation: Any):
         """
         Receives trip observation state, records memory, and selects
         the agent's mode choice via trhe random model.

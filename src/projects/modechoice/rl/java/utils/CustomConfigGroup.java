@@ -1,13 +1,8 @@
 package modechoice.rl.java.utils;
 
-import org.matsim.api.core.v01.population.Person;
-import org.matsim.core.config.ConfigGroup;
 import org.matsim.core.config.ReflectiveConfigGroup;
-import org.matsim.api.core.v01.Id;
 
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 
 
@@ -15,12 +10,17 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
     public static final String GROUP_NAME = "agentModeChoice";
     private static final String WEIGHTS_SET_TYPE = "modelWeights";
 
+    private String outputDirectory;
     private String modelType;
-    private String autoEncoderModel = "";
+    private String loadCheckpoint = "";
     private int saveInterval = 1;
     private int validationInterval = 1;
     private double discontinuityPenalty = 1.0;
     private double retrievalCostPenalty = 1.5;
+
+    // Optional Strings
+    private String TAZFileName = null;
+    private String autoEncoderModel = "";
 
     private double alpha;
     private double gamma;
@@ -46,11 +46,21 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
 
     //--- Getters & Setters ---//
 
+    public void setOutputDirectory(String outputDirectory) {
+        this.outputDirectory = outputDirectory;
+    }
+
     @StringGetter("modelType")
     public String getModelType() { return modelType; }
 
     @StringSetter("modelType")
     public void setModelType(String modelType) { this.modelType = modelType; }
+
+    @StringGetter("loadCheckpoint")
+    public String getLatestCheckpoint() {return this.loadCheckpoint;}
+
+    @StringSetter("loadCheckpoint")
+    public void setLatestCheckpoint(String checkpointString) { this.loadCheckpoint = checkpointString; }
 
     @StringGetter("alpha")
     public double getAlpha() { return alpha; }
@@ -111,6 +121,12 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
 
     @StringSetter("retrievalCostPenalty")
     public void setRetrievalCostPenalty(double retrievalCostPenalty) { this.retrievalCostPenalty = retrievalCostPenalty; }
+
+    @StringGetter("TAZFileName")
+    public String getTAZFileName() {return TAZFileName;}
+
+    @StringSetter("TAZFileName")
+    public void setTAZFileName(String TAZFileName) {this.TAZFileName = TAZFileName; }
 
     @StringGetter("autoEncoderModel")
     public String getEncoderModel() { return autoEncoderModel; }

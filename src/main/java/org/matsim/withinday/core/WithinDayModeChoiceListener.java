@@ -24,9 +24,9 @@ import org.matsim.core.mobsim.qsim.QSim;
 import org.matsim.core.router.TripRouter;
 import org.matsim.withinday.environment.AgentAssetInventory;
 import org.matsim.withinday.environment.MatsimScoreTracker;
-import org.matsim.withinday.environment.StateEngine;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.networking.CommunicationManager;
+import org.matsim.withinday.utils.StateEngine;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
 import java.util.HashMap;
@@ -74,6 +74,7 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     public void notifyStartup(StartupEvent event) {
         this.customReplanner.initializeExternalModel();
         this.agentSelector.sampleAgentsForSimulation();
+        System.out.println("The total unique reinitializations of the RL agent in the simulation is: " + this.agentSelector.getSimulationSubspaceSize());
     }
 
     /**
@@ -97,14 +98,19 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         log.info("Initializing Mode Location Tagging for the filtrered agents at start of iteration {}", event.getIteration());
         AgentAssetInventory.initializeModeLocationTagging(this.scenario, selectedAgents);
         
-        //selectedAgents.forEach(agentId -> {
-        //    int assignedTag = this.agentSelector.getAgentTag(agentId);
-        //    System.out.println("Assigned Tag for " + agentId + " is: " + assignedTag);
-        //});
+        System.out.println("Temporary Log: The number of agents in the training set are: " + this.agentSelector.getSimulationSubspaceSize());
+        System.out.println("Temporary Log: The number of agents in the test set are: " + this.agentSelector.getSimulationTestSize());
+
+        System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationSubspace());
+        System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationTestSubspace());
+
+        selectedAgents.forEach(agentId -> {
+            int assignedTag = this.agentSelector.getAgentTag(agentId);
+            System.out.println("Temporary Log: Assigned Tag for " + agentId + " is: " + assignedTag);
+        });
 
         // Initialize the tour based modes
-        String[] tourBasedModes = AgentAssetInventory.getSimulationTourBasedModes().toArray(String[]::new);
-        StateEngine.setModeAvailabilityLookup(tourBasedModes);
+        StateEngine.setModeAvailabilityLookup();
     }
 
     /**

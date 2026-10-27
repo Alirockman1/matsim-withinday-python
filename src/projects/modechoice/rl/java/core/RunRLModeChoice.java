@@ -9,14 +9,15 @@ import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.router.util.TravelTime;
+import org.matsim.core.scoring.ScoringFunctionFactory;
 import org.matsim.withinday.core.AgentSelector;
 import org.matsim.withinday.core.RunWithinDay;
 import org.matsim.withinday.core.WithinDayModeChoiceListener;
 import org.matsim.withinday.core.WithinDayReplanner;
 import org.matsim.withinday.environment.MatsimScoreTracker;
+import org.matsim.withinday.environment.SplitAwareScoringFunctionFactory;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.networking.CommunicationManager;
-import org.matsim.withinday.networking.UnixSocketCommunicationManager;
 import org.matsim.withinday.trafficmonitoring.WithinDayTravelTime;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
@@ -67,17 +68,18 @@ public class RunRLModeChoice extends RunWithinDay {
             @Override
             public void install() {
                 // Inter-Platform Communication Manager
-                bind(CommunicationManager.class).to(UnixSocketCommunicationManager.class).asEagerSingleton();
-                addControllerListenerBinding().to(UnixSocketCommunicationManager.class);
+                bind(CommunicationManager.class).asEagerSingleton();
+                addControllerListenerBinding().to(CommunicationManager.class);
 
                 // Selector
                 bind(AgentSelector.class).asEagerSingleton();
                 
                 // Observer & Replanner
-                bindDynamicClass(WithinDayObserver.class, observerClass, CustomRLObserver.class);
                 bindDynamicClass(WithinDayReplanner.class, replannerClass, CustomRLReplanner.class);
+                bindDynamicClass(WithinDayObserver.class, observerClass, CustomRLObserver.class);
 
-                // Live access to MATSim's own scoring
+                // Live access to the unique scoring factory
+                bind(ScoringFunctionFactory.class).to(SplitAwareScoringFunctionFactory.class).asEagerSingleton();
                 bind(MatsimScoreTracker.class).asEagerSingleton();
                 addEventHandlerBinding().to(MatsimScoreTracker.class);
 

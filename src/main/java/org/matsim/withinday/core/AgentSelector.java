@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,16 +54,19 @@ import org.matsim.api.core.v01.Id;
  * @author Multi-Agent Scenario Simulation Architecture
  */
 public class AgentSelector { 
-
     private static final Logger log = LogManager.getLogger(AgentSelector.class);
+
+    private static final double DEFAULT_TRAIN_PERCENTAGE = 0.10;
+    private static final double DEFAULT_TEST_TO_TRAIN_RATIO = 0.25;
         
     private final Scenario scenario;
     private final Long randomSeed;
     private final int numAgentsPerIteration;
     private final WithinDayConfigGroup configGroup;
 
-    // Master pool of agents eligible for scenario tracking throughout the entire simulation run (Tier 1)
+    // Master pool of agents eligible for scenario tracking throughout the entire simulation run
     private final Set<Id<Person>> simulationAgentSubspace = new HashSet<>();
+    private final Set<Id<Person>> simulationAgentTestSubspace = new HashSet<>();
     
     // Active subset of agents participating in the current iteration (Tier 2)
     private final Set<Id<Person>> selectedAgents = new HashSet<>();
@@ -144,8 +148,10 @@ public class AgentSelector {
         Collection<String> explicitTrainAgentIds = new ArrayList<>();
 
         String filterListString = this.configGroup.getTrainAgentIDList();
-        if (this.configGroup!= null && filterListString != null) {
+        if (this.configGroup != null && filterListString != null && !filterListString.isBlank()) {
             explicitTrainAgentIds = Arrays.asList(filterListString.split("\\s*,\\s*"));
+        } else {
+            explicitTrainAgentIds = Collections.emptyList();
         }
 
         List<Person> candidatePool = new ArrayList<>();
@@ -163,22 +169,102 @@ public class AgentSelector {
             }
             log.info("AgentSelector: Initialized simulation subspace with {} explicit training agents.", candidatePool.size());
         } else {
-            double effectivePercentage = (samplingPercentage > 0.0) ? samplingPercentage : 0.10;
-            log.info("AgentSelector: No explicit training list found. Using baseline simulation sampling percentage: {}%", effectivePercentage * 100.0);
-
-            List<Person> allPersons = new ArrayList<>(scenario.getPopulation().getPersons().values());
-            Collections.shuffle(allPersons, new Random(this.randomSeed));
-            int numberToSample = (int) Math.max(1, Math.round(allPersons.size() * effectivePercentage));
-
-            for (int i = 0; i < numberToSample && i < allPersons.size(); i++) {
-                candidatePool.add(allPersons.get(i));
-            }
-            log.info("AgentSelector: Initialized simulation subspace with {} agents from percentage sampling.", candidatePool.size());
+            double trainPercentage = (samplingPercentage > 0.0) ? samplingPercentage : DEFAULT_TRAIN_PERCENTAGE;
+            candidatePool = sampleTrainTestSplit(trainPercentage);
         }
 
         for (Person p : candidatePool) {
             simulationAgentSubspace.add(p.getId());
         }
+    }
+
+    /**
+     * Splits the population into a disjoint test and train set and returns the one
+     * requested by {@code configGroup.getDataSetType()} ("train" or "test").
+     * <p>
+     * Procedure:
+     * <ol>
+     *   <li>Sort all eligible persons by ID, so the result does not depend on the
+     *       iteration order of the population map.</li>
+     *   <li><strong>Test set first:</strong> shuffle with a fixed seed and take
+     *       {@link #DEFAULT_TEST_PERCENTAGE} of the population.</li>
+     *   <li><strong>Remove the test persons</strong> from the pool.</li>
+     *   <li><strong>Train set:</strong> shuffle the remaining pool with a second fixed seed
+     *       and take {@code trainPercentage} of the <em>whole</em> population (capped at the
+     *       size of the remaining pool).</li>
+     * </ol>
+     * Both seeds are fixed, so the same population always yields the same sets. The test
+     * set is also identical whether the run is a train run or a test run, because it never
+     * depends on the train percentage.
+     *
+     * @param trainPercentage fraction of the whole population to use for training, in (0, 1].
+     * @return the persons of the requested data set.
+     */
+    private List<Person> sampleTrainTestSplit(double trainPercentage) {
+        // Deterministic base order
+        List<Person> allPersons = new ArrayList<>();
+        for (Person person : scenario.getPopulation().getPersons().values()) {
+            if (isEligiblePerson(person)) {
+                allPersons.add(person);
+            }
+        }
+        allPersons.sort(Comparator.comparing(p -> p.getId().toString()));
+        int total = allPersons.size();
+ 
+        if (total < 2) {
+            log.warn("AgentSelector: Population has {} eligible person(s); cannot create a disjoint train/test split.", total);
+        }
+ 
+        // Draw the test set first
+        long testSeed = this.randomSeed;
+        long trainSeed = this.randomSeed + 1L;
+        
+        // Sample the train dataset
+        int numTrain = (int) Math.max(1, Math.round(total * trainPercentage));
+        numTrain = Math.min(numTrain, total - 1);
+
+        List<Person> shuffledForTrain = new ArrayList<>(allPersons);
+        Collections.shuffle(shuffledForTrain, new Random(trainSeed));
+        List<Person> trainSet = new ArrayList<>(shuffledForTrain.subList(0, numTrain));
+
+        // Sample the test dataset from the remaining space
+        List<Person> remainingPool = new ArrayList<>();
+        for (Person p : allPersons) {
+            if (!trainSet.contains(p)) {
+                remainingPool.add(p);
+            }
+        }
+
+        Collections.shuffle(remainingPool, new Random(testSeed));
+
+        // Test set size is 20% of the train set size (i.e., a 20:80 ratio)
+        int numTest = (int) Math.max(1, Math.round(trainSet.size() * DEFAULT_TEST_TO_TRAIN_RATIO));
+        numTest = Math.min(numTest, remainingPool.size());
+
+        List<Person> testSet = new ArrayList<>(remainingPool.subList(0, numTest));
+
+        for (Person p : testSet) {
+            simulationAgentTestSubspace.add(p.getId());
+        }
+
+        log.info("AgentSelector: Split population of {} into {} test and {} train agents (disjoint; test seed {}, train seed {}).",
+        total, testSet.size(), trainSet.size(), testSeed, trainSeed);
+ 
+        // Return the requested data set
+        String dataSetType = this.configGroup.getDataSetType();
+        boolean useTest = dataSetType != null && dataSetType.trim().equalsIgnoreCase("test");
+ 
+        if (useTest) {
+            log.info("AgentSelector: dataSetType = 'test' -> simulation subspace is the test set ({} agents).", testSet.size());
+            return testSet;
+        }
+ 
+        if (dataSetType == null || !dataSetType.trim().equalsIgnoreCase("train")) {
+            log.warn("AgentSelector: Unknown dataSetType '{}'; defaulting to 'train'.", dataSetType);
+        }
+
+        log.info("AgentSelector: dataSetType = 'train' -> simulation subspace is the train set ({} agents).", trainSet.size());
+        return trainSet;
     }
 
     /**
@@ -202,6 +288,36 @@ public class AgentSelector {
         log.info("AgentSelector: Successfully initialized {} unique tag slots in uniqueAgentTags (1001 to {}).", 
                 uniqueAgentTags.size(), tagCounter - 1);
     }
+
+    /**
+     * Returns the number of persons sampled from the entire population, i.e. the
+     * train or test set (or the explicit agent list) chosen in {@link #sampleAgentsForSimulation()}.
+     * 
+     * @return The number of agents in the simulation subspace; 0 if it has not been sampled yet.
+     */
+    public int getSimulationSubspaceSize() {return simulationAgentSubspace.size();}
+
+    /**
+     * Returns the person id of the agents sampled as train cases
+     * 
+     * @return {@set<Id<Person>>}} of agents {@Id} in the simulation train subspace
+     */
+    public Set<Id<Person>> getAgentsFromSimulationSubspace() {return simulationAgentSubspace;}
+
+    /**
+     * Returns the number of persons sampled as test cases, i.e. the
+     * train or test set (or the explicit agent list) chosen in {@link #sampleAgentsForSimulation()}.
+     * 
+     * @return The number of agents in the simulation subspace; 0 if it has not been sampled yet.
+     */
+    public int getSimulationTestSize() {return simulationAgentTestSubspace.size();}
+
+    /**
+     * Returns the person id of the agents sampled as test cases
+     * 
+     * @return {@set<Id<Person>>}} of agents {@Id} in the simulation train subspace
+     */
+    public Set<Id<Person>> getAgentsFromSimulationTestSubspace() {return simulationAgentTestSubspace;}
 
     /**
      * Samples agents from subspace for the current iteration.

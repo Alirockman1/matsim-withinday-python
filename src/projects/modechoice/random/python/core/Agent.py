@@ -32,6 +32,7 @@ class RandomModeAgent:
     def choose_action(self, available_modes):
         """Selects a random mode from the available modes list."""
         # Ensure available modes is valid and not empty
+        print(available_modes)
         if not available_modes:
             return "pedestrian"  # fallback default if empty
 

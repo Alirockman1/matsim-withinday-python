@@ -66,8 +66,9 @@ public class CustomRLScoringEngine extends WithinDayRealTimeScoringEngine {
 
         CustomConfigGroup customConfigGroup = (CustomConfigGroup) this.localObserver.getCustomConfigGroup();
         double retrievalCostWeight = customConfigGroup.getModelWeights().getOrDefault("retrievalCostPenalty", 1.0);
+        double costMarkupAlpha = customConfigGroup.getModelWeights().getOrDefault("discontinuityPenalty", 1.0);
 
-        return Math.abs(discontinuityPenalty + (retrievalCostWeight * retrievalPenalty));
+        return Math.abs(costMarkupAlpha * discontinuityPenalty + (retrievalCostWeight * retrievalPenalty));
     }
 
     /**
@@ -100,22 +101,18 @@ public class CustomRLScoringEngine extends WithinDayRealTimeScoringEngine {
         }
 
         // Fallback safety penalty if no legal modes are found in the configuration map
-        if (!foundLegalMode) return 100.0;
+        if (!foundLegalMode) return 150.0;
 
         // Compute the actual disutility of the restricted/unavailable mode used
-        ModeUtilityParameters usedModeParams = this.scoringParameters.modeParams.get(this.lastActiveMode);
+        ModeUtilityParameters usedModeParams = this.scoringParameters.modeParams.get(lastActiveMode);
         double actualTripDisutility = (usedModeParams != null) 
                 ? tripDisutility(legsInTrip, usedModeParams) 
                 : bestLegalTripDisutility;
 
-        // Proportional Cost Markup with Adaptive Weighting Penalty
-        CustomConfigGroup customConfigGroup = (CustomConfigGroup) this.localObserver.getCustomConfigGroup();
-        double costMarkupAlpha = customConfigGroup.getModelWeights().getOrDefault("discontinuityPenalty", 1.0);
-
         // Scales proportionally with the best legal alternative to prevent short/long trip distortions
-        double proportionalBasePenalty = costMarkupAlpha * bestLegalTripDisutility;
+        double illegalActionDeterrentBasePenalty = 250.0;
         double relativeRegret = Math.max(0.0, actualTripDisutility - bestLegalTripDisutility);
-        double modeDiscontinuityPenalty = proportionalBasePenalty + relativeRegret;
+        double modeDiscontinuityPenalty = illegalActionDeterrentBasePenalty + relativeRegret;
         
         return modeDiscontinuityPenalty;
     }

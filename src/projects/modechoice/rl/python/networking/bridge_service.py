@@ -39,32 +39,23 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
 
             # Update class global parameter
             Agent.configure_global_parameters(config_data)
-
             model_type = config_data.get("modelType", "Q-Learning")
-            model_file = config_data.get("modelFileName")
-
-            # Load existing Q-Table weights if present
-            if model_file and os.path.exists(model_file):
-                logger.info(f"Loading existing Q-table from: {model_file}")
-                #self.agent.load_q_table(model_file)
 
             logger.info("RL Agent successfully initialized.")
             return {"status": f"{model_type} Initialized"}
 
-    def request_decision(self, agent_tag: int, observation: Any):
+    def request_decision(self, agent_tag: int, dataset: str, observation: Any):
         """
         Receives trip observation state, initializes state representation, and selects the mode.
         """
         with self._lock:
             agent = self._get_or_create_agent(agent_tag)
-            state = prepare_state(agent_tag, observation, self.trip_memory)
+            state = prepare_state(agent_tag, observation, self.trip_memory, True)
 
-            print(f"Terminal Status: The agent {observation.agentID} is terminal: {agent.terminal}")
-
-            if not agent.terminal:
+            if not agent.terminal and dataset != "test":
                 agent.init_state(state)
 
-            chosen_mode = get_chosen_action(agent_tag, agent, self.trip_memory)
+            chosen_mode = get_chosen_action(agent_tag, agent, self.trip_memory, dataset)
             return str(chosen_mode)
 
     def process_feedback(self, agent_tag: int, feedback: Any):
@@ -113,9 +104,6 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
             # Safely grab the latest reward from history
             reward_history = agent_trip_memory.get("reward_history", [])
             latest_reward = reward_history[-1] if reward_history else 0.0
-            #print(latest_reward)
-            #print(previous_state)
-            #print(previous_action)
 
             # Update Q-table policy
             if previous_state is not None and previous_action is not None:
@@ -137,6 +125,8 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
         with self._lock:
             if hasattr(self, "trip_memory"):
                 self.trip_memory.clear()
+            
+            Agent.increment_simulation_iteration
 
             for agent_ID , agent in self.agents.items():
                 agent.terminal = False
@@ -155,48 +145,30 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
             return True
         return False
 
-    def get_service_metrics(self):
+    def update_shared_policy(self, include_states: bool = True, include_q_table: bool = True):
         """
-        Returns the active Q-Table (with stringified state keys), latest delta_q,
-        agent IDs, and population metadata for inspection/debugging.
+        Aggregates the per-agent summaries (each agent builds its own via agent.summary()).
+ 
+        Pass include_states=False / include_q_table=False for a light per-iteration summary;
+        both are True by default to keep the previous output shape.
         """
         with self._lock:
-            if not hasattr(self, "agents") or not self.agents:
+            if not self.agents:
                 return {
                     "status": "uninitialized",
+                    "agents": [],
                     "q_table": {},
-                    "agents": []
                 }
-
-            safe_q_table = {}
-            agents_info = []
-            max_delta_q = 0.0
-
-            for agent_id, agent_instance in self.agents.items():
-                agent_id_str = str(agent_id)
-                
-                # 1. Convert each agent's Q-Table state keys to strings
-                agent_q_map = {}
-                if hasattr(agent_instance, "_q_table"):
-                    for state_key, q_values in agent_instance._q_table.items():
-                        agent_q_map[str(state_key)] = q_values
-                safe_q_table[agent_id_str] = agent_q_map
-
-                # 2. Extract population metadata from trip memory
-                memory = self.trip_memory.get(agent_id, {})
-                population_type = memory.get("population", "default") if isinstance(memory, dict) else "default"
-                
-                agents_info.append({
-                    "agent_id": agent_id_str,
-                    "population": population_type
-                })
-
-                # 3. Track maximum delta_q across the population
-                if hasattr(agent_instance, "delta_q"):
-                    max_delta_q = max(max_delta_q, float(agent_instance.delta_q))
-
-            return {
-                "latest_delta_q": max_delta_q,
+ 
+            agents_info = [agent.summary(include_states, include_q_table) for agent in self.agents.values()]
+ 
+            metrics = {
+                "status": "active",
                 "agents": agents_info,
-                "q_table": safe_q_table
             }
+ 
+            if include_q_table:
+                # Same shape as before: {agent_id: {state: {mode: q}}} at the top level
+                metrics["q_table"] = {info["agent_id"]: info.pop("q_table") for info in agents_info}
+ 
+            return metrics

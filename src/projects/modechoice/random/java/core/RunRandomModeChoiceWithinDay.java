@@ -4,11 +4,13 @@ import org.matsim.api.core.v01.Scenario;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.controler.AbstractModule;
+import org.matsim.core.scoring.ScoringFunctionFactory;
 import org.matsim.withinday.core.AgentSelector;
 import org.matsim.withinday.core.RunWithinDay;
 import org.matsim.withinday.core.WithinDayModeChoiceListener;
 import org.matsim.withinday.core.WithinDayReplanner;
 import org.matsim.withinday.environment.MatsimScoreTracker;
+import org.matsim.withinday.environment.SplitAwareScoringFunctionFactory;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.networking.CommunicationManager;
 import modechoice.random.java.core.RandomModeChoiceObserver;
@@ -49,6 +51,7 @@ public class RunRandomModeChoiceWithinDay extends RunWithinDay {
                     addControllerListenerBinding().to(CommunicationManager.class);
 
                     // Live access to MATSim's standard scoring tracker
+                    bind(ScoringFunctionFactory.class).to(SplitAwareScoringFunctionFactory.class).asEagerSingleton();
                     bind(MatsimScoreTracker.class).asEagerSingleton();
                     addEventHandlerBinding().to(MatsimScoreTracker.class);
 

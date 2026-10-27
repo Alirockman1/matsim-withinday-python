@@ -78,10 +78,10 @@ public abstract class RunWithinDay {
      */
     protected void setupOutputSettings(Config config) {
         config.controller().setOverwriteFileSetting(OverwriteFileSetting.deleteDirectoryIfExists);
-        config.controller().setWritePlansInterval(config.controller().getLastIteration());
-        config.controller().setWriteEventsInterval(config.controller().getLastIteration());
-        //config.controller().setWritePlansInterval(1);
-        //config.controller().setWriteEventsInterval(1);
+        //config.controller().setWritePlansInterval(config.controller().getLastIteration());
+        //config.controller().setWriteEventsInterval(config.controller().getLastIteration());
+        config.controller().setWritePlansInterval(1);
+        config.controller().setWriteEventsInterval(1);
         config.controller().setWriteSnapshotsInterval(0);
         config.controller().setCreateGraphsInterval(1);
         config.controller().setDumpDataAtEnd(false);

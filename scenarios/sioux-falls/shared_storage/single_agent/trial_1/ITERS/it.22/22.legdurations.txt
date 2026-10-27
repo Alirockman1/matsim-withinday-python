@@ -1,0 +1,33 @@
+pattern	0+	5+	10+	15+	20+	25+	30+	35+	40+	45+	50+	55+	60+
+bike interaction---bike interaction	58	495	473	185	55	28	21	15	16	17	11	6	25
+bike interaction---home	658	44	0	0	0	0	0	0	0	0	0	0	0
+bike interaction---work	694	8	0	1	0	0	0	0	0	0	0	0	0
+car interaction---car interaction	3877	3307	1104	523	298	177	131	101	106	95	65	46	58
+car interaction---home	4570	373	1	0	0	0	0	0	0	0	0	0	0
+car interaction---secondary	1387	18	2	3	0	0	0	0	0	0	0	0	0
+car interaction---work	3505	29	0	0	0	0	0	0	0	0	0	0	0
+home---bike interaction	659	44	0	0	0	0	0	0	0	0	0	0	0
+home---car interaction	4570	373	1	0	0	0	0	0	0	0	0	0	0
+home---pedestrian interaction	389	31	0	0	0	0	0	0	0	0	0	0	0
+home---pt interaction	735	723	310	161	117	19	4	2	0	0	0	0	0
+home---secondary	0	3	16	13	17	15	11	10	7	2	5	11	5
+home---work	1	9	18	17	19	17	10	12	10	7	6	2	4
+pedestrian interaction---home	388	31	0	0	0	0	0	0	0	0	0	0	0
+pedestrian interaction---pedestrian interaction	15	56	131	144	139	108	84	66	44	15	14	7	19
+pedestrian interaction---secondary	134	0	0	0	0	0	0	0	0	0	0	0	0
+pedestrian interaction---work	289	0	0	0	0	0	0	0	0	0	0	0	0
+pt interaction---home	880	630	276	144	101	17	2	2	0	0	0	0	0
+pt interaction---pt interaction	3283	1885	317	76	50	43	29	31	24	22	12	3	7
+pt interaction---secondary	585	230	100	76	21	3	3	0	0	0	0	0	0
+pt interaction---work	665	212	113	55	5	3	1	0	0	0	0	0	0
+secondary---car interaction	1387	18	2	3	0	0	0	0	0	0	0	0	0
+secondary---home	0	5	11	20	21	16	13	10	8	2	6	11	6
+secondary---pedestrian interaction	135	0	0	0	0	0	0	0	0	0	0	0	0
+secondary---pt interaction	479	278	132	74	33	4	3	0	0	0	0	0	0
+work---bike interaction	693	8	0	1	0	0	0	0	0	0	0	0	0
+work---car interaction	3505	29	0	0	0	0	0	0	0	0	0	0	0
+work---home	1	9	21	15	23	16	13	11	10	6	6	2	6
+work---pedestrian interaction	287	0	0	0	0	0	0	0	0	0	0	0	0
+work---pt interaction	521	322	118	73	15	1	0	0	0	0	0	0	0
+
+average leg duration: 336.2031795878312 seconds = 00:05:36

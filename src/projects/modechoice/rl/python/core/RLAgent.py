@@ -2,9 +2,12 @@ import random
 import pickle
 import os
 
-class DecentralizedQLearningAgent:
+from modechoice.rl.python.core.Memory import Memory
 
+class DecentralizedQLearningAgent:
     RANDOM_SEED = 42
+
+    _config = {}
     _alpha = 0.1
     _gamma = 0.9
     _initial_epsilon = 1.0
@@ -12,8 +15,10 @@ class DecentralizedQLearningAgent:
     _epsilon_decay = 0.99
     _output_directory = ""
     _file_path = ""
+    _simulation_iteration = 0
     max_training_iteration = 100
     _modes = []
+    _checkpoint_model = ""
     
     @classmethod
     def configure_global_parameters(cls, config_args: dict):
@@ -21,25 +26,31 @@ class DecentralizedQLearningAgent:
         Dynamically configures class-level shared parameters from any arbitrary dictionary 
         passed by MATSim/Java, without needing to know every key ahead of time.
         """
-        config = config_args or {}
+        cls._config = config_args or cls._config
 
         # Extract known parameters safely with default fallbacks
-        cls._alpha = float(config.get("alpha", cls._alpha))
-        cls._gamma = float(config.get("gamma", cls._gamma))
-        cls._initial_epsilon = float(config.get("epsilon", cls._initial_epsilon))
-        cls._epsilon_min = float(config.get("epsilonMinimum", cls._epsilon_min))
-        cls._epsilon_decay = float(config.get("epsilonDecay", cls._epsilon_decay))
-        cls.max_training_iteration = int(config.get("trainingCutoffIteration", cls.max_training_iteration))
+        cls._alpha = float(config_args.get("alpha", cls._alpha))
+        cls._gamma = float(config_args.get("gamma", cls._gamma))
+        cls._initial_epsilon = float(config_args.get("epsilon", cls._initial_epsilon))
+        cls._epsilon_min = float(config_args.get("epsilonMinimum", cls._epsilon_min))
+        cls._epsilon_decay = float(config_args.get("epsilonDecay", cls._epsilon_decay))
+        cls.max_training_iteration = int(config_args.get("trainingCutoffIteration", cls.max_training_iteration))
         cls._output_directory = str(config_args.get("outputDirectory"))
+        cls._checkpoint_model = str(config_args.get("checkpointModel"))
+        cls._simulation_iteration = 0
         
         # Parse available modes globally
-        mode_string = config.get("modes", "")
+        mode_string = config_args.get("modes", "")
         if isinstance(mode_string, str):
             cls._modes = [m.strip() for m in mode_string.split(",") if m.strip()]
         else:
             cls._modes = list(mode_string)
 
         random.seed(cls.RANDOM_SEED)
+
+    @classmethod
+    def increment_simulation_iteration(cls):
+        cls._simulation_iteration =+ 1
 
     @classmethod
     def get_epsilon(cls):
@@ -70,9 +81,13 @@ class DecentralizedQLearningAgent:
         self._delta_q = 0.0
         self._epsilon = self._initial_epsilon
         self._terminal = False
+        self._previous_iteration = 0
+        self._memory = Memory()
 
         for key, value in args.items():
             setattr(self, key, value)
+
+        self._load_data_on_startup()
 
     @property
     def q_table(self):
@@ -94,6 +109,29 @@ class DecentralizedQLearningAgent:
     def terminal(self, isterminal):
         self._terminal = isterminal
 
+    @property
+    def state_coverage(self):
+        return self._memory.get_data()
+
+    def summary(self, include_states=True, include_q_table=False):
+        """
+        Summarize this agent for monitoring (plain, JSON-safe values only).
+ 
+        :param include_states:  also include the per-state visit / action counts (can be large).
+        :param include_q_table: also include this agent's full Q-table (can be very large).
+        """
+        data = {
+            "iteration": self._current_iteration,
+            "q_table_states": len(self._q_table),
+            **self._memory.summary(),
+        }
+
+        if include_states:
+            data["states"] = self._memory.details()
+        if include_q_table:
+            data["q_table"] = {str(state): dict(q_values) for state, q_values in self._q_table.items()}
+        return data
+    
     def init_state(self, state_tuple):
         ''' Initializes the state and action pair in this agent's Q-table. '''
 
@@ -101,28 +139,44 @@ class DecentralizedQLearningAgent:
             # Initialize all possible modes
             self._q_table[state_tuple] = {mode: 600.0 for mode in self._modes}
 
+        self._memory.record_state(state_tuple, self._modes)
+
     def decay_epsilon(self, iteration):
         ''' Updates the epsilon value for the current iteration. '''
-        self._current_iteration = iteration 
-        self._epsilon = max(self._epsilon_min, self._initial_epsilon * (self._epsilon_decay ** iteration))
+        self._current_iteration = iteration + self._previous_iteration
+        self._epsilon = max(self._epsilon_min, self._initial_epsilon * (self._epsilon_decay ** self._current_iteration))
         
-    def choose_action(self, state, available_modes):
+    def choose_action_train(self, state, available_modes):
         ''' Epsilon-Greedy selection for mode choices for this specific agent. ''' 
         # Exploration (Random)
         if random.random() < self._epsilon and self._current_iteration < self.max_training_iteration:
-            return random.choice(available_modes)
+            chosen_action = random.choice(available_modes)
         # Exploitation
         else:
             agent_policy = self._q_table[state]
             filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
+            chosen_action = max(filtered_policy, key=filtered_policy.get)
+
+        self._memory.record_action(state, chosen_action)
+        return chosen_action
+
+    def choose_action_evaluation(self, state, available_modes):
+        ''' Evaluate the saved policy in the q_table.
+	    Return default pedestrain mode if the state doesnt exist '''
+
+        try:
+            agent_policy = self._q_table[state]
+            filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
             return max(filtered_policy, key=filtered_policy.get)
+        except (KeyError, TypeError):
+            return "pedestrian"
 
     def update_policy(self, state, action, reward, next_state=None, print_tabel=False):
         ''' 
         The Bellman Equation Update for this agent.
         "Q(s, a) = Q(s, a) + alpha * [reward + gamma * max(Q(s', a')) - Q(s, a)]" '''
 
-        if self._current_iteration >= self.max_training_iteration:
+        if self._simulation_iteration >= self.max_training_iteration:
             return
         
         current_q_value = self._q_table[state][action]
@@ -147,18 +201,16 @@ class DecentralizedQLearningAgent:
             self.print_q_table()
 
     def print_q_table(self):
-        ''' Print the bit-encoded Q-table within the Command Prompt window using a grid layout. '''
+        ''' Print the bit-encoded Q-table within the Command Prompt window using a clean tabular layout. '''
 
-        # Width tailored for tighter, packed columns
-        width = 118
-
+        width = 125
         print(f"\n{'=' * width}")
-        print(f"{'PERSONAL Q-TABLE (GRID VIEW): ' + str(self._id):^{width}}")
+        print(f"{'PERSONAL Q-TABLE (20-BIT VECTOR VIEW): ' + str(self._id):^{width}}")
         print(f"{'=' * width}")
 
-        # The new optimized header
-        header = (f"{'DEPARTURE GRID':<18} | {'ARRIVAL GRID':<18} | "
-                  f"{'DEP BIN':<8} | {'ASSETS':<12} || "
+        # Optimized header matching the exact 20-bit feature set
+        header = (f"{'CUR ZONE':<10} | {'TGT ZONE':<10} | "
+                  f"{'DEP BIN':<8} | {'DISTANCE':<12} | {'ASSET':<14} | {'CONGESTION':<12} || "
                   f"{'CAR':<7} | {'PT':<7} | {'BIKE':<7} | {'WALK':<7}")
         print(header)
         print("-" * width)
@@ -166,90 +218,157 @@ class DecentralizedQLearningAgent:
         for state_bits, actions in self._q_table.items():
             state_bits_string = [str(bit) for bit in state_bits]
 
-            if "TERMINAL" in state_bits or len(state_bits) < 136:
-                terminal_row = (f"{'TERMINAL STATE':<18} | {' ':<18} | "
-                                f"{'-':<8} | {'TERMINAL':<12} || "
+            # Handle terminal states or unexpected short keys safely
+            if "TERMINAL" in state_bits or len(state_bits) < 20:
+                terminal_row = (f"{'TERMINAL STATE':<10} | {' ':<10} | "
+                                f"{'-':<8} | {'-':<12} | {'TERMINAL':<14} | {'-':<12} || "
                                 f"{actions.get('car', 0.0):>7.2f} | {actions.get('pt', 0.0):>7.2f} | "
                                 f"{actions.get('bike', 0.0):>7.2f} | {actions.get('pedestrian', 0.0):>7.2f}")
                 print(terminal_row)
                 print("." * width)
                 continue
 
-            # 1. Unpack the components
-            dep = state_bits_string[0:64]
-            arr = state_bits_string[64:128]
-            #flx = state_bits_string[133]
-            tme = "".join(state_bits_string[128:133])
-            ast = "".join(state_bits_string[134:136])
+            # 1. Unpack bits according to the exact 20-bit breakdown:
+            print(state_bits_string)
+            curr_zone_bits = "".join(state_bits_string[0:4])
+            tgt_zone_bits  = "".join(state_bits_string[4:8])
+            time_bits      = "".join(state_bits_string[8:13])
+            dist_bits      = "".join(state_bits_string[13:16])
+            asset_bits     = "".join(state_bits_string[16:18])
+            cong_bits      = "".join(state_bits_string[18:20])
 
-            # 2. Decode Labels
-            tau_val = int(tme, 2)
-            asset_idx = int(ast, 2)
-            asset_label = {0: "NONE", 1: "CAR ONLY", 2: "BIKE ONLY", 3: "CAR + BIKE"}.get(asset_idx, "NONE")
-            #flex_label = "FLEXIBLE" if flx == '1' else "CONSTRAINED"
-
-            # 3. Slice bits into a 4x16 Matrix (4 chunks of 16 bits each)
-            d_chunks = ["".join(state_bits_string[0:16]), "".join(state_bits_string[16:32]), "".join(state_bits_string[32:48]), "".join(state_bits_string[48:64])]
-            a_chunks = ["".join(state_bits_string[64:80]), "".join(state_bits_string[80:96]), "".join(state_bits_string[96:112]), "".join(state_bits_string[112:128])]
-
-            # 4. Print 4 unified rows combining the Grid segments and Metrics
-            # Row 1 contains the core labels and values
-            row1 = (f"{d_chunks[0]:<18} | {a_chunks[0]:<18} | "
-                    f"{str(tau_val):<8} | {asset_label:<12} || "
-                    f"{actions.get('car', 0.0):>7.2f} | "
-                    f"{actions.get('pt', 0.0):>7.2f} | "
-                    f"{actions.get('bike', 0.0):>7.2f} | "
-                    f"{actions.get('pedestrian', 0.0):>7.2f}")
-            print(row1)
-
-            # Row 2, 3, and 4 continue the bit grids while leaving metrics columns clean
-            row2 = f"{d_chunks[1]:<18} | {a_chunks[1]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
-            print(row2)
-
-            row3 = f"{d_chunks[2]:<18} | {a_chunks[2]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
-            print(row3)
-
-            row4 = f"{d_chunks[3]:<18} | {a_chunks[3]:<18} | {' ':<8} | {' ':<12} || {' ' * 37}"
-            print(row4)
+            # 2. Decode Values & Labels
+            curr_zone = int(curr_zone_bits, 2)
+            tgt_zone  = int(tgt_zone_bits, 2)
+            tau_val   = int(time_bits, 2)
             
-            # Section break
+            dist_idx   = int(dist_bits, 2)
+            dist_label = {
+                0: "0-1 km", 
+                1: "1-2 km", 
+                2: "2-5 km", 
+                3: "5-10 km",
+                4: "10+ km"
+            }.get(dist_idx, "UNKNOWN")
+
+            asset_idx   = int(asset_bits, 2)
+            asset_label = {
+                0: "NONE", 
+                1: "CAR ONLY", 
+                2: "BIKE ONLY", 
+                3: "CAR + BIKE"
+            }.get(asset_idx, "UNKNOWN")
+            
+            cong_idx   = int(cong_bits, 2)
+            cong_label = {
+                0: "FREE", 
+                1: "SLOW", 
+                2: "MILD", 
+                3: "HEAVY"
+            }.get(cong_idx, "UNKNOWN")
+
+            # 3. Print formatted row with Q-values
+            row = (f"{curr_zone:<10} | {tgt_zone:<10} | "
+                   f"{tau_val:<8} | {dist_label:<12} | {asset_label:<14} | {cong_label:<12} || "
+                   f"{actions.get('car', 0.0):>7.2f} | "
+                   f"{actions.get('pt', 0.0):>7.2f} | "
+                   f"{actions.get('bike', 0.0):>7.2f} | "
+                   f"{actions.get('pedestrian', 0.0):>7.2f}")
+            print(row)
+            
+            # Section break between states
             print("." * width)
 
         print(f"{'=' * width}\n")
 
     def dump(self, iteration):
-        ''' Saves the Q-table to a file using pickle '''
+        """Save or update the shared Q-table checkpoint."""
 
         if iteration > self.max_training_iteration:
-            save_directoy = self._output_directory
-        else:    
-            save_directory = f"{self._output_directory}/ITERS/it.{iteration}"
-
-        print(f"The directory to save the table is: {save_directory}")
-        
-        try:
-            # Ensure the directory exists before dumping
-            os.makedirs(save_directory, exist_ok=True)
-            save_file_path = os.path.join(save_directory, "q_table.pkl")
-            
-            with open(save_file_path, 'wb') as f:
-                pickle.dump(self._q_table, f)
-                
-            print(f"PYTHON SERVICE: Q-Table successfully saved to {save_directory}.")
-        except Exception as e:
-            print(f"PYTHON SERVICE: Failed to save Q-Table: {e}")
-
-
-
-
-    def load_models(self, load_file_path):
-        ''' Loads decentralized tables from file. '''
-        if os.path.exists(load_file_path):
-            try:
-                with open(load_file_path, 'rb') as f:
-                    self._agent_tables = pickle.load(f)
-                print(f"PYTHON SERVICE: Loaded tables for {len(self._agent_tables)} unique agents.")
-            except Exception as e:
-                print(f"PYTHON SERVICE: Failed to load: {e}.")
+            save_directory = self._output_directory
         else:
-            print("PYTHON SERVICE: No model found. Starting decentralized training fresh.")
+            save_directory = os.path.join(self._output_directory, "ITERS", f"it.{iteration}")
+
+        try:
+            os.makedirs(save_directory, exist_ok=True)
+
+            save_file_path = os.path.join(save_directory, "q_table.pkl")
+
+            if os.path.isfile(save_file_path) and os.path.getsize(save_file_path) > 0:
+                with open(save_file_path, "rb") as f:
+                    checkpoint = pickle.load(f)
+
+                checkpoint.setdefault("q_tables", {})
+                checkpoint.setdefault("memories", {})
+
+                checkpoint["q_tables"][self._id] = self._q_table
+                checkpoint["memories"][self._id] = self._memory.get_data()
+            else:
+                checkpoint = {
+                    "iteration": iteration + self._previous_iteration + 1,
+                    "config_arg": self._config,
+                    "q_tables": {self._id: self._q_table},
+                    "memories": {self._id: self._memory.get_data()},
+                }
+
+            with open(save_file_path, "wb") as f:
+                pickle.dump(checkpoint, f)
+
+            print(f"PYTHON SERVICE: Checkpoint successfully saved to {save_file_path} for agent {self._id}.")
+        except Exception as e:
+            print(f"PYTHON SERVICE: Failed to save checkpoint: {e}")
+
+    def _load_data_on_startup(self):
+        """Load decentralized Q-tables and populate self._q_table."""
+
+        load_file_path = self._checkpoint_model
+
+        if not load_file_path or not str(load_file_path).strip():
+            print("PYTHON SERVICE: No checkpoint path provided. Starting fresh.")
+            return False
+
+        if not os.path.isfile(load_file_path):
+            print(f"PYTHON SERVICE: Checkpoint not found: {load_file_path}")
+            return False
+
+        if os.path.getsize(load_file_path) == 0:
+            print(f"PYTHON SERVICE: Checkpoint file is empty: {load_file_path}")
+            return False
+
+        try:
+            with open(load_file_path, "rb") as f:
+                saved_data = pickle.load(f)
+
+            self._previous_iteration = saved_data["iteration"]
+            self.configure_global_parameters(saved_data["config_arg"])
+            q_tables = saved_data.get("q_tables", {})
+            memories = saved_data.get("memories", {})
+
+            self._parse_loaded_data_for_agent(q_tables, memories)
+
+            print(f"PYTHON SERVICE: Loaded tables for {self._id}")
+            self.print_q_table()
+
+            return True
+        except Exception as e:
+            print(f"PYTHON SERVICE: Failed to load checkpoint: {e}")
+            return False
+
+    def _parse_loaded_data_for_agent(self, q_tables, memories):
+        self._q_table = {}
+
+        q_table = q_tables.get(self._id) or q_tables.get(str(self._id))
+        memory = memories.get(self._id) or memories.get(str(self._id))
+
+        for state, action_values in q_table.items():
+            if not isinstance(action_values, dict):
+                print(f"PYTHON SERVICE: Skipping invalid state {state!r}.")
+                continue
+
+            self._q_table[state] = {}
+
+            for action, q_value in action_values.items():
+                self._q_table[state][action] = q_value
+        
+        if memory:
+            self._memory.load_data(memory)

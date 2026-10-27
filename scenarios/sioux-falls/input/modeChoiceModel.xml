@@ -4,9 +4,11 @@
 <config>
     <module name="agentModeChoice">
         <param name="modelType" value="QLearning" />
-        <param name="autoEncoderModel" value="matsim_binary_encoder_dim15.onnx" />
+        <param name="loadCheckpoint" value="" />
+        <param name="TAZFileName" value="sioux_falls_taz.shp" />
+        <param name="autoEncoderModel" value="" />
         <param name="saveInterval" value="1" /> 
-        <param name="validationInterval" value="5" /> 
+        <param name="validationInterval" value="40" /> 
         <param name="trainingCutoffIteration" value="800" /> 
         <param name="alpha" value="0.1" />
         <param name="gamma" value="0.9" />

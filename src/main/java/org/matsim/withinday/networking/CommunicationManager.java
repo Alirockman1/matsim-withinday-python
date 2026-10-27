@@ -186,12 +186,18 @@ public class CommunicationManager implements StartupListener, ShutdownListener {
      * @param agentIdString The optional agent ID string for agent-scoped requests.
      * @return The fully formed request URI.
      */
-    protected URI formatUrl(String requestName, String agentIdString) {
+    protected URI formatUrl(String requestName, String agentIdString, Object arg) {
         String path = requestName.startsWith("/") ? requestName.substring(1) : requestName;
 
         if (agentIdString != null){ 
             int agentTag = agentSelector.getAgentTag(agentIdString);
-            return URI.create(baseUrl + "/agent/" + agentTag + "/" + path);
+
+            if (arg != null){
+                return URI.create(baseUrl + "/agent/" + agentTag + "/" + path + "/test");
+            }else{
+                return URI.create(baseUrl + "/agent/" + agentTag + "/" + path);
+            }
+            
         }else{
             return URI.create(baseUrl + "/global/" + path);
         }
@@ -208,11 +214,23 @@ public class CommunicationManager implements StartupListener, ShutdownListener {
      * @return The response body string, or null if the request failed.
      */
     public String httpPost(String json, String requestName, long timeout){
-        return httpPost(json, requestName, timeout, null);
+        return httpPost(json, requestName, timeout, null, null);
     }
 
     /**
-     * Sends an HTTP POST request with a JSON payload, scoped globally or to a specific agent.
+     * Sends an HTTP POST request with a JSON payload, for specific agent for training.
+     *
+     * @param json        The JSON payload string.
+     * @param requestName The target endpoint path.
+     * @param timeout     The request timeout in seconds.
+     * @return The response body string, or null if the request failed.
+     */
+    public String httpPost(String json, String requestName, long timeout, String agentIdString){
+        return httpPost(json, requestName, timeout, agentIdString, null);
+    }
+
+    /**
+     * Sends an HTTP POST request with a JSON payload, for a specific agent for testing.
      *
      * @param json          The JSON payload string.
      * @param requestName   The target endpoint path.
@@ -220,9 +238,9 @@ public class CommunicationManager implements StartupListener, ShutdownListener {
      * @param agentIdString The optional agent ID string.
      * @return The response body string, or null if the request failed.
      */
-    public String httpPost(String json, String requestName, long timeout, String agentIdString) {
+    public String httpPost(String json, String requestName, long timeout, String agentIdString, Object arg) {
         try {
-            URI fullUrl = formatUrl(requestName, agentIdString);
+            URI fullUrl = formatUrl(requestName, agentIdString, arg);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(fullUrl)
@@ -257,7 +275,18 @@ public class CommunicationManager implements StartupListener, ShutdownListener {
      * @return The response body string, or null if the request failed.
      */
     public String httpGet(String requestName, long timeout){
-        return httpGet(requestName, timeout, null);
+        return httpGet(requestName, timeout, null, null);
+    }
+
+    /**
+     * Sends a global HTTP GET request.
+     *
+     * @param requestName The target endpoint path.
+     * @param timeout     The request timeout in seconds.
+     * @return The response body string, or null if the request failed.
+     */
+    public String httpGet(String requestName, long timeout, String agentIdString){
+        return httpGet(requestName, timeout, agentIdString, null);
     }
 
     /**
@@ -268,9 +297,9 @@ public class CommunicationManager implements StartupListener, ShutdownListener {
      * @param agentIdString The optional agent ID string.
      * @return The response body string, or null if the request failed.
      */
-    public String httpGet(String requestName, long timeout, String agentIdString) {
+    public String httpGet(String requestName, long timeout, String agentIdString, String datasetType) {
         try {
-            URI fullUrl = formatUrl(requestName, agentIdString);
+            URI fullUrl = formatUrl(requestName, agentIdString, datasetType);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(fullUrl)

@@ -35,7 +35,7 @@ class BaseSimulationBridgeService:
                 "session_id": config_data.get("scenarioName", "default")
             }
 
-    def request_decision(self, agent_tag: int, observation: Any) -> str:
+    def request_decision(self, agent_tag: int, dataset: str, observation: Any) -> str:
         """
         Main decision loop method. Takes an agent's current state/observation 
         from MATSim and returns the selected action or mode choice string.
@@ -64,7 +64,7 @@ class BaseSimulationBridgeService:
 
         raise NotImplementedError("Subclasses must implement checkpoint_state()")
 
-    def get_service_metrics(self) -> Dict[str, Any]:
+    def update_shared_policy(self, include_states: bool = True, include_q_table: bool = True) -> Dict[str, Any]:
         """
         Returns diagnostic metrics, decision statistics, or active model properties.
         
@@ -72,8 +72,10 @@ class BaseSimulationBridgeService:
 
         with self._lock:
             return {
-                "active_agent_memories": len(self.agent_memories),
-                "configured": bool(self.session_config)
+                "status": "uninitialized",
+                "latest_delta_q": 0.0,
+                "agents": [],
+                "q_table": {},
             }
 
     def reset_episode():
@@ -92,9 +94,9 @@ def load_bridge_service() -> Optional[BaseSimulationBridgeService]:
     
     :return: An instance of a class extending `BaseSimulationBridgeService`."""
     
-    service_path = os.getenv("SERVICE_CLASS", "none")
+    service_path = os.getenv("SERVICE_CLASS", "")
 
-    if not service_path or service_path.lower() == "none":
+    if not service_path or service_path.lower() == "":
         logger.info("Running baseline mode: No external bridge service loaded.")
         return None
     

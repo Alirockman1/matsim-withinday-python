@@ -16,9 +16,9 @@ import org.matsim.core.router.TripRouter;
 import org.matsim.core.router.TripStructureUtils;
 import org.matsim.core.router.TripStructureUtils.Trip;
 import org.matsim.withinday.core.WithinDayReplanner;
-import org.matsim.withinday.environment.StateEngine;
 import org.matsim.withinday.environment.WithinDayObserver;
 import org.matsim.withinday.networking.CommunicationManager;
+import org.matsim.withinday.utils.StateEngine;
 import org.matsim.withinday.utils.WithinDayAgentExperience;
 import org.matsim.core.utils.timing.TimeInterpretation;
 

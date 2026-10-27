@@ -19,8 +19,10 @@ DATA_FOLDER="/home/h2/alka383h/researchDataFolder/HPC/RL_Mode_Choice/decenterali
 WS_NAME="matsim"
 SCENARIO_NAME="sioux_falls"
 OBJECTIVE="single"
+NUM_AGENTS_PER_ITERATION="1"
+AGENT_ID="10047_1"
+SAMPLING_PERCENTAGE="0.01"
 
-AGENT_LIST="10047_1"
 MATSIM_ITERATION="350"
 MAX_TRAINING_ITERATION="300"
 NUM_THREADS="4"
@@ -73,15 +75,17 @@ SIF_FILE="${MATSIM_ROOT}/matsim_RL_v1.sif"
 DOCKER_IMAGE_PATH="${MATSIM_ROOT}/matsim_rl_image.tar"
 SHARED_DIRECTORY="${MATSIM_ROOT}/scenarios/${SCENARIO_NAME}/shared_storage"
 
-# Create log and database directories inside the high-performance workspace storage
-mkdir -p "$OUTPUT_DIRECTORY"
-mkdir -p "$SHARED_DIRECTORY"
+RUN_ID=$(date +%Y%m%d_%H%M%S)
+mkdir -p "${OUTPUT_DIRECTORY}/run_${RUN_ID}"
 
 # Dynamically update the config.xml agent filter list
 CONFIG_PATH="${INPUT_DIRECTORY}/config.xml"
 if [ -f "$CONFIG_PATH" ]; then
     echo "### Updating agent filter list in config.xml to: ${AGENT_ID} ###"
-    sed -i.bak -E 's/(<param name="agentFilterList" value=")[^"]*("\/>)/\1'"${AGENT_ID}"'\2/' "$CONFIG_PATH"
+    sed -i.bak -E 's/(<param name="trainAgentIDList" value=")[^"]*("\/>)/\1'"${AGENT_ID}"'\2/' "$CONFIG_PATH"
+
+    echo "### Updating samplingPercentage in config.xml to: ${SAMPLING_PERCENTAGE} ###"
+    sed -i.bak -E 's/(<param name="samplingPercentage" value=")[^"]*("\/>)/\1'"${SAMPLING_PERCENTAGE}"'\2/' "$CONFIG_PATH"
 else
     echo "### Warning: config.xml not found at ${CONFIG_PATH}, skipping config update. ###"
 fi
@@ -120,9 +124,10 @@ fi
 # ==============================================================================
 echo "### Launching MATSim in the container ###"
 
-srun singularity run --containall --writable-tmpfs --cleanenv \
+srun singularity run --pwd /app --containall --writable-tmpfs --cleanenv \
     --env OBJECTIVE="$OBJECTIVE" \
-    --env MATSIM_OUTPUT_BASE="/app/scenarios/$SCENARIO_NAME/output" \
+    --env AGENTS_PER_ITERATION="$NUM_AGENTS_PER_ITERATION" \
+    --env MATSIM_OUTPUT_BASE="/app/scenarios/$SCENARIO_NAME/output/run_${RUN_ID}" \
     --env MATSIM_ITERATION="$MATSIM_ITERATION" \
     --env MAX_TRAINING_ITERATION="$MAX_TRAINING_ITERATION" \
     --env NUM_THREADS="$NUM_THREADS" \

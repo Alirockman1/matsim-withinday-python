@@ -5,7 +5,7 @@ $REPLANNER_CLASS = "RandomModeChoiceReplanner"
 $SCENARIO_NAME = "sioux-falls"
 $OBJECTIVE = "single" 
 
-$MATSIM_ITERATION = "9"
+$MATSIM_ITERATION = "100"
 $NUM_THREADS = "4"
 $MEMORY = "12g"
 
@@ -82,10 +82,8 @@ $WSL_OUTPUT    = (wsl wslpath -a -u "$DOCKER_OUTPUT").Trim()
 $WSL_SHARED    = (wsl wslpath -a -u "$DOCKER_SHARED").Trim()
 
 # 6. Remove old Docker image & build fresh Docker image
+$IMAGE_TAG = "matsim-project:development"
 if($REBUILT_DOCKER){
-    # Create a dynamic tag name based on the current objective
-    $IMAGE_TAG = "matsim-rl:$OBJECTIVE"
-
     Write-Host "Removing old Docker image [$IMAGE_TAG]..." -ForegroundColor Yellow
     wsl docker rmi $IMAGE_TAG -f 2>$null
 

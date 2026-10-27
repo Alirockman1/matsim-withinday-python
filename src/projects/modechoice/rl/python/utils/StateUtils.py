@@ -1,8 +1,28 @@
-def prepare_state(agent_id, data, trip_memory):
+def prepare_state(agent_id, data, trip_memory, with_previous_mode=False):
     feature_map = data.features
     agent_trip_memory = trip_memory.get(agent_id)
 
-    new_state = tuple(feature_map["rawBitStateRepresentation"])
+    state = list(feature_map["rawBitStateRepresentation"])
+    print(f"Temporary Log: State without the previous modes is - {state}")
+
+    if with_previous_mode:
+        mode_choice_list = sorted(list(data.possibleModeSet))
+        mode_choice_list.insert(0, "none")
+
+        if agent_trip_memory and len(agent_trip_memory) > 0:
+            previous_mode = agent_trip_memory.get("mode")
+        else:
+            previous_mode = "none"
+
+        idx = mode_choice_list.index(previous_mode)
+        bit_width = max(1, (len(mode_choice_list) - 1).bit_length())
+        bin_str = format(idx, f"0{bit_width}b")
+
+        mode_bits = [int(bit) for bit in bin_str]
+        state.extend(mode_bits)
+
+    new_state = tuple(state)
+    print(f"Temporary Log: State with the previous modes {new_state}")
 
     if agent_trip_memory:
         previous_state = agent_trip_memory.get("state")
@@ -24,7 +44,7 @@ def prepare_state(agent_id, data, trip_memory):
 
     return new_state
 
-def get_chosen_action(agent_id, agent, trip_memory):
+def get_chosen_action(agent_id, agent, trip_memory, dataset):
     memory = trip_memory.get(agent_id)
     iteration = memory['full_data'].simulationIteration
     
@@ -32,8 +52,11 @@ def get_chosen_action(agent_id, agent, trip_memory):
         return "pedestrian"
     
     # Update the epsilon value for the iteration
-    agent.decay_epsilon(iteration)
-    mode = agent.choose_action(memory['state'], memory['available_modes'])
+    if dataset != "test":
+        agent.decay_epsilon(iteration)
+        mode = agent.choose_action_train(memory['state'], memory['available_modes'])
+    else:
+        mode = agent.choose_action_evaluation(memory['state'], memory['available_modes'])
 
     memory["mode"] = mode
     memory["action_history"].append(mode)

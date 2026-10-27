@@ -1,4 +1,4 @@
-﻿<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE config SYSTEM "./dtd/config_v2.dtd">
 
 <config>
@@ -7,7 +7,7 @@
 	</module>
 
 	<module name="plans">
-		<param name="inputPlansFile" value="population_10p_unrouted.xml" />
+		<param name="inputPlansFile" value="population_project_specific.xml" />
 		<param name="handlingOfPlansWithoutRoutingMode" value="useMainModeIdentifier" />
 	</module>
 
@@ -290,9 +290,11 @@
 
     <module name="withinday">
         <param name="externalModelFileName" value="modeChoiceModel.xml" />
-        <param name="trainAgentIDList" value="10034_1,10047_1" />
-		<param name="samplingPercentage" value="0.20" />
-		<param name="agentsPerIteration" value="10" />
+		<param name="dataset" value="train" />
+        <!--<param name="trainAgentIDList" value="5964_2,10047_1" />-->
+		<param name="trainAgentIDList" value="10047_1" />
+		<param name="samplingPercentage" value="0.01" />
+		<param name="agentsPerIteration" value="1" />
         <param name="modes" value="car,pt,bike,pedestrian" />
         <param name="tourBasedModes" value="car,bike" />
     </module>

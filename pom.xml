@@ -150,14 +150,14 @@
 			<artifactId>onnxruntime</artifactId>
 			<version>1.17.1</version>
 		</dependency>
-<!--		<dependency>-->
-<!--			<groupId>org.matsim.contrib</groupId>-->
-<!--			<artifactId>simwrapper</artifactId>-->
-<!--			<version>${matsim.version}</version>-->
-<!--		</dependency>-->
-
-		<!--Dependencies from where stated above to here are added as a service; they can be removed if you don't need them-->
-
+		<dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-shapefile</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.jts</groupId>
+            <artifactId>jts-core</artifactId>
+        </dependency>
 	</dependencies>
 
 	<build>
