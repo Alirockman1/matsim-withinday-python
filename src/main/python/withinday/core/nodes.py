@@ -58,7 +58,7 @@ class WorkerNode:
             "-Djava.awt.headless=true",
             "-cp", classpath,
             f"{self._java_run_script}",
-            f"{self._config_path}",
+            "--config", f"{self._config_path}",
             f"--config:controller.outputDirectory={self._output_dir}",
             f"--config:controller.lastIteration={self._iteration}",
             f"--config:global.numberOfThreads={self._threads}"

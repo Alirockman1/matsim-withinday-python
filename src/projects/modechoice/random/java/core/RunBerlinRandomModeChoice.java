@@ -9,7 +9,6 @@ import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.controler.Controler;
 import org.matsim.run.OpenBerlinScenario;
 import org.matsim.simwrapper.SimWrapperConfigGroup;
-import org.matsim.withinday.core.WithinDayCli;
 import org.matsim.withinday.core.WithinDayFrameworkSettings;
 import org.matsim.withinday.core.WithinDayModule;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
@@ -37,8 +36,7 @@ public class RunBerlinRandomModeChoice extends OpenBerlinScenario {
             "person", "freight", "goodsTraffic", "commercialPersonTraffic", "commercialPersonTraffic_service");
 
     public static void main(String[] args) {
-        // Accepts both the positional config path used by the python launcher and "--config <path>".
-        MATSimApplication.execute(RunBerlinRandomModeChoice.class, WithinDayCli.normalize(args));
+        MATSimApplication.execute(RunBerlinRandomModeChoice.class, args);
     }
 
     @Override

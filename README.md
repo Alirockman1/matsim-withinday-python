@@ -257,7 +257,7 @@ rm -rf scenarios/<scenario>/output/project/<project_name>
 java -Xmx12g -Djava.awt.headless=true \
   -cp a7-rl-testbed-0.0.1-SNAPSHOT.jar \
   <MainClass> \
-  scenarios/<scenario>/input/config.xml \
+  --config scenarios/<scenario>/input/config.xml \
   --config:controller.outputDirectory=scenarios/<scenario>/output/project/<project_name> \
   --config:controller.lastIteration=9 \
   --config:global.numberOfThreads=4 \
@@ -274,7 +274,7 @@ Remove-Item -Recurse -Force scenarios\<scenario>\output\project\<project_name> -
 java -Xmx12g -Djava.awt.headless=true `
   -cp target\a7-rl-testbed-0.0.1-SNAPSHOT.jar `
   <MainClass> `
-  scenarios\<scenario>\input\config.xml `
+  --config scenarios\<scenario>\input\config.xml `
   --config:controller.outputDirectory=scenarios/<scenario>/output/project/<project_name> `
   --config:controller.lastIteration=9 `
   --config:global.numberOfThreads=4 `
@@ -286,6 +286,9 @@ java -Xmx12g -Djava.awt.headless=true `
  **Note:**
  - The Java process launches the **Python bridge service** itself (via the `CommunicationManager`). The service to start is selected by the `SERVICE_CLASS` environment variable, and Python must be able to import it, so `SERVICE_CLASS` and `PYTHONPATH` must be set **in the shell that runs `java`**. You do not start the Python service manually.
  
+ - Every runner is a `MATSimApplication`, so the config file is passed behind `--config` and single
+   config values are overridden with `--config:<module>.<param>=<value>`.
+
  - Omitting `--config:withinday.replanner` / `observer` uses the framework defaults.
 
  - `WorkerNode` currently invokes `/app/simulation.jar` and `pymatsim` reads scenario files from `/app/scenarios/...`. These paths exist inside the Docker image. For the Python wrapper to work outside Docker you need to mirror those paths (or make them configurable). The direct `java` command above works anywhere.
