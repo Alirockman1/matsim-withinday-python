@@ -5,6 +5,8 @@ import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.HashSet;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.core.config.Config;
@@ -13,6 +15,8 @@ import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.ReflectiveConfigGroup;
 
 public class WithinDayConfigGroup extends ReflectiveConfigGroup {
+    private static final Logger log = LogManager.getLogger(WithinDayConfigGroup.class);
+
     public static final String GROUP_NAME = "withinday";
 
     private static String externalModelFileName = "";
@@ -108,8 +112,10 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
     /**
      * Reads the config file named by {@code withinday.externalModelFileName} - the hyperparameters
      * of an external model - into the given, already registered config groups. The file is resolved
-     * next to the scenario config. A missing file is not an error: the groups then keep their
-     * defaults, and the launcher can still set every value via {@code --config:}.
+     * next to the scenario config. An unset name is not an error: the groups then keep their
+     * defaults, and the launcher can still set every value via {@code --config:}. A name that is
+     * set but points nowhere is an error, otherwise the run would silently continue with the
+     * learning parameters at their default value of 0.
      *
      * @param config  The configuration being prepared; its context points at the scenario config.
      * @param targets The config groups the values are read into.
@@ -117,6 +123,8 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
     public static void loadExternalModelConfig(Config config, ConfigGroup... targets) {
         String modelFileName = getExternalModelFileName();
         if (modelFileName == null || modelFileName.isBlank() || config.getContext() == null) {
+            log.info("[MODEL PARAMS] No '{}.externalModelFileName' configured, every value has to come "
+                    + "from the scenario config or from --config: overrides.", GROUP_NAME);
             return;
         }
 
@@ -128,9 +136,14 @@ public class WithinDayConfigGroup extends ReflectiveConfigGroup {
         }
 
         File modelFile = new File(scenarioDirectory, modelFileName);
-        if (!modelFile.exists()) {
-            return;
+        if (!modelFile.isFile()) {
+            throw new IllegalArgumentException(String.format(
+                    "Model parameter file '%s' not found (from %s.externalModelFileName = '%s'). Without it "
+                    + "the learning parameters would stay at their default value of 0.",
+                    modelFile.getAbsolutePath(), GROUP_NAME, modelFileName));
         }
+
+        log.info("[MODEL PARAMS] Loading model parameters from {}", modelFile.getAbsolutePath());
 
         // Parses into the group instances that are already registered on config, so the values land there.
         ConfigUtils.loadConfig(modelFile.getAbsolutePath(), targets);
