@@ -162,14 +162,17 @@ class DecentralizedQLearningAgent:
 
     def choose_action_evaluation(self, state, available_modes):
         ''' Evaluate the saved policy in the q_table.
-	    Return default pedestrain mode if the state doesnt exist '''
+	    Fall back to the first available mode if the state doesnt exist.
+	    The fallback has to come from available_modes: a hard coded mode name only exists
+	    in the scenario it was written for, and MATSim aborts the mobsim with
+	    UnknownModeException on any mode its TripRouter does not know. '''
 
         try:
             agent_policy = self._q_table[state]
             filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
             return max(filtered_policy, key=filtered_policy.get)
         except (KeyError, TypeError):
-            return "pedestrian"
+            return available_modes[0]
 
     def update_policy(self, state, action, reward, next_state=None, print_tabel=False):
         ''' 

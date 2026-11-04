@@ -2,7 +2,7 @@ package org.matsim.withinday.core;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.matsim.api.core.v01.Scenario;
+import org.matsim.application.MATSimApplication;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.groups.QSimConfigGroup;
@@ -10,28 +10,50 @@ import org.matsim.core.config.groups.ReplanningConfigGroup;
 import org.matsim.core.config.groups.RoutingConfigGroup;
 import org.matsim.core.config.groups.ScoringConfigGroup;
 import org.matsim.core.controler.AbstractModule;
-import org.matsim.core.controler.Controller;
-import org.matsim.core.controler.ControllerUtils;
+import org.matsim.core.controler.Controler;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
 import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
-import org.matsim.core.scenario.ScenarioUtils;
+import org.matsim.withinday.utils.WithinDayConfigGroup;
+
+import picocli.CommandLine;
 
 /**
  * <h2>RunWithinDay Abstract Runner</h2>
  * <p>
- * Serves as the extensible orchestrator and template for running multi-agent 
- * scenario simulations. It standardizes the initialization lifecycle, configuration 
- * parsing, output directory settings, framework defaults, and dependency injection 
- * hooks while allowing baseline and custom scenario runners to customize specific 
- * hooks as needed.
+ * Base class for the within-day runners that bring their own scenario, as opposed to the ones
+ * derived from an external scenario such as Open Berlin. It is a {@link MATSimApplication}, so
+ * every runner in this project is launched the same way - the config file behind {@code --config}
+ * and config values overridden with {@code --config:<module>.<param>=<value>} - and it fills the
+ * MATSimApplication lifecycle hooks with the within-day defaults: the typed within-day config
+ * group, the framework settings replacing day-to-day replanning, the output settings and the
+ * within-day Guice bindings.
  * </p>
  */
-public abstract class RunWithinDay {
+@CommandLine.Command(header = ":: Within-Day Mode Choice ::", mixinStandardHelpOptions = true, showDefaultValues = true)
+public abstract class RunWithinDay extends MATSimApplication {
     protected static final Logger log = LogManager.getLogger(RunWithinDay.class);
 
-    public final void run(String[] args) {
-        // Load Configurations (handled by subclass to decide if custom groups are included)
-        Config config = loadConfiguration(args);
+    protected RunWithinDay() {
+    }
+
+    /**
+     * @param config Config given from code, e.g. from a test, instead of {@code --config}.
+     */
+    protected RunWithinDay(Config config) {
+        super(config);
+    }
+
+    /**
+     * Prepares the configuration of a within-day run. The {@code --config:} overrides are applied
+     * by {@link MATSimApplication} afterwards, so the command line still wins over these defaults.
+     *
+     * @param config The configuration loaded from the config file.
+     * @return The prepared configuration.
+     */
+    @Override
+    protected Config prepareConfig(Config config) {
+        // Materialize the within-day module from the config file.
+        ConfigUtils.addOrGetModule(config, WithinDayConfigGroup.class);
 
         // Configure Output Directory and File Intervals
         setupOutputSettings(config);
@@ -39,35 +61,27 @@ public abstract class RunWithinDay {
         // Apply MATSim Framework & Replanning Settings
         applyFrameworkSettings(config);
 
-        // Load Scenario & Create Controller
-        Scenario scenario = ScenarioUtils.loadScenario(config);
-        Controller controller = ControllerUtils.createController(scenario);
-
-        // Register Guice Bindings via Subclass Hook
-        controller.addOverridingModule(createModule(scenario, config));
-
-        // Execute Simulation
-        controller.run();
+        return config;
     }
 
     /**
-     * Subclasses implement this to load configuration modules specific to 
-     * baseline or custom multi-agent scenario runs.
-     * 
-     * @param args Command-line arguments containing configuration paths or overrides.
-     * @return The fully populated MATSim {@link Config} instance.
+     * Registers the within-day bindings on the controller.
+     *
+     * @param controler The controller being prepared.
      */
-    protected abstract Config loadConfiguration(String[] args);
+    @Override
+    protected void prepareControler(Controler controler) {
+        controler.addOverridingModule(createWithinDayModule(controler.getConfig()));
+    }
 
     /**
-     * Method for subclasses to supply their own Guice {@link AbstractModule} 
+     * Method for subclasses to supply their own Guice {@link AbstractModule}
      * containing custom bindings and listener registrations.
-     * 
-     * @param scenario The loaded simulation scenario.
-     * @param config   The loaded simulation configuration.
+     *
+     * @param config The loaded simulation configuration.
      * @return An {@link AbstractModule} instance for controller overriding.
      */
-    protected abstract AbstractModule createModule(Scenario scenario, Config config);
+    protected abstract AbstractModule createWithinDayModule(Config config);
 
     /**
      * Sets up output directory behaviors and file-writing intervals 
@@ -105,31 +119,5 @@ public abstract class RunWithinDay {
                 .setStrategyName(DefaultPlanStrategiesModule.DefaultSelector.KeepLastSelected)
                 .setWeight(1.0)
         );
-    }
-
-    /**
-     * Utility method for parsing configuration file paths from command-line parameters.
-     * 
-     * @param args Command-line arguments array.
-     * @return The resolved configuration file path string.
-     */
-    protected String parseConfigPath(String[] args) {
-        return (args != null && args.length > 0 && args[0] != null) 
-                ? args[0] 
-                : "scenarios/sioux-falls/input/config.xml";
-    }
-
-    /**
-     * Applies dynamic command-line overrides onto the loaded configuration object.
-     * 
-     * @param config The configuration to update.
-     * @param args   Command-line arguments array containing override pairs.
-     */
-    protected void applyCommandlineOverrides(Config config, String[] args) {
-        if (args != null && args.length > 1) {
-            String[] overrides = new String[args.length - 1];
-            System.arraycopy(args, 1, overrides, 0, overrides.length);
-            ConfigUtils.applyCommandline(config, overrides);
-        }
     }
 }

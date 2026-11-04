@@ -236,11 +236,20 @@ public class CustomRLReplanner extends WithinDayReplanner {
         for (Leg leg : legsInTrip) {
             totalTripDistance += leg.getRoute().getDistance();
             totalTripTravelTime += leg.getTravelTime().orElse(0.0);
-            
+
             if (!leg.getMode().contains("walk")) {
                 mainModeLegCount++;
                 currentModeUsed = leg.getMode();
             }
+        }
+
+        // Skipping the walk legs finds the main mode behind access and egress walking, but it leaves
+        // a trip that is walking all the way without any mode. That never shows on a scenario whose
+        // walking mode is named something else, such as Sioux Falls' "pedestrian"; on Open Berlin the
+        // mode is "walk", so every walk trip would report "unknown" - into the asset inventory and
+        // the step reward, not just into the tracking csv.
+        if ("unknown".equals(currentModeUsed) && !legsInTrip.isEmpty()) {
+            currentModeUsed = legsInTrip.getFirst().getMode();
         }
 
         int numberOfTransfers = Math.max(0, mainModeLegCount - 1);

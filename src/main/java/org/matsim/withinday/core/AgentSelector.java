@@ -228,9 +228,14 @@ public class AgentSelector {
         List<Person> trainSet = new ArrayList<>(shuffledForTrain.subList(0, numTrain));
 
         // Sample the test dataset from the remaining space
+        Set<Id<Person>> trainIds = new HashSet<>();
+        for (Person p : trainSet) {
+            trainIds.add(p.getId());
+        }
+
         List<Person> remainingPool = new ArrayList<>();
         for (Person p : allPersons) {
-            if (!trainSet.contains(p)) {
+            if (!trainIds.contains(p.getId())) {
                 remainingPool.add(p);
             }
         }

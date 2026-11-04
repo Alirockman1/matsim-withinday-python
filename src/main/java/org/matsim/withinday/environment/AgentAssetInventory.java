@@ -329,8 +329,9 @@ public class AgentAssetInventory {
 
         if (!TOUR_BASED_MODES.contains(mode)) {return true;}
 
-        String attributeKey = mode + "_avail";
-        String availability = (String) person.getAttributes().getAttribute(attributeKey);
+        // Scenarios differ in their naming: this project writes "car_avail", MATSim and the Open
+        // Berlin population write "carAvail".
+        String availability = readAttribute(person, mode + "_avail", mode + "Avail");
 
         if (availability != null) {
             String available = availability.trim().toLowerCase();
@@ -338,6 +339,23 @@ public class AgentAssetInventory {
             return !"false".equals(available) && !"never".equals(available);
         }
         return true;
+    }
+
+    /**
+     * Reads a person attribute under any of the given keys.
+     *
+     * @param person        The person whose attributes are read.
+     * @param attributeKeys Attribute names to try, in order.
+     * @return The first value found, or {@code null} if the person carries none of them.
+     */
+    private static String readAttribute(Person person, String... attributeKeys) {
+        for (String attributeKey : attributeKeys) {
+            Object value = person.getAttributes().getAttribute(attributeKey);
+            if (value != null) {
+                return String.valueOf(value);
+            }
+        }
+        return null;
     }
 
     /**

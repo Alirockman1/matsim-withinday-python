@@ -285,6 +285,14 @@ public abstract class WithinDayReplanner {
             if (!leg.getMode().contains("walk")) {currentModeUsed = leg.getMode();}
         }
 
+        // Skipping the walk legs finds the main mode behind access and egress walking, but it leaves
+        // a trip that is walking all the way without any mode. That never shows on a scenario whose
+        // walking mode is named something else, such as Sioux Falls' "pedestrian"; on Open Berlin the
+        // mode is "walk", so every walk trip would be reported as "unknown".
+        if ("unknown".equals(currentModeUsed) && !legsInTrip.isEmpty()) {
+            currentModeUsed = legsInTrip.getFirst().getMode();
+        }
+
         Map<String, Object> metrics = new HashMap<>();
         metrics.put("distance", totalTripDistance);
         metrics.put("travelTime", totalTripTravelTime);

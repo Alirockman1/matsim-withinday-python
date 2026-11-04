@@ -1,45 +1,31 @@
 package modechoice.discrete_choice.java.core;
 
-import org.matsim.api.core.v01.Scenario;
+import org.matsim.application.MATSimApplication;
 import org.matsim.core.config.Config;
-import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.groups.QSimConfigGroup;
 import org.matsim.core.config.groups.ReplanningConfigGroup;
-import org.matsim.core.config.groups.ReplanningConfigGroup.StrategySettings;
 import org.matsim.core.config.groups.RoutingConfigGroup;
 import org.matsim.core.config.groups.ScoringConfigGroup;
 import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
-import org.matsim.core.scoring.ScoringFunctionFactory;
-import org.matsim.withinday.core.AgentSelector;
 import org.matsim.withinday.core.RunWithinDay;
-import org.matsim.withinday.core.WithinDayModeChoiceListener;
-import org.matsim.withinday.core.WithinDayReplanner;
-import org.matsim.withinday.environment.MatsimScoreTracker;
-import org.matsim.withinday.environment.SplitAwareScoringFunctionFactory;
-import org.matsim.withinday.environment.WithinDayObserver;
-import org.matsim.withinday.networking.CommunicationManager;
-import modechoice.discrete_choice.java.core.DiscreteModeChoiceObserver;
-import modechoice.discrete_choice.java.core.DiscreteModeChoiceReplanner;
+import org.matsim.withinday.core.WithinDayModule;
 
-import org.matsim.withinday.utils.WithinDayConfigGroup;
+import picocli.CommandLine;
 
+/**
+ * <h2>RunDiscreteModeChoiceWithinDay</h2>
+ * <p>
+ * Runs the discrete choice within-day mode choice on the scenario given behind {@code --config}.
+ * In contrast to the other runners day-to-day replanning stays active here, so that MATSim's own
+ * subtour mode choice can serve as the reference for the within-day decisions.
+ * </p>
+ */
+@CommandLine.Command(header = ":: Within-Day Mode Choice (discrete choice) ::", mixinStandardHelpOptions = true, showDefaultValues = true)
 public class RunDiscreteModeChoiceWithinDay extends RunWithinDay {
 
     public static void main(String[] args) {
-        new RunDiscreteModeChoiceWithinDay().run(args);
-    }
-
-    @Override
-    protected Config loadConfiguration(String[] args) {
-        String configPath = parseConfigPath(args);
-
-        // Baseline only requires the WithinDay module
-        WithinDayConfigGroup withindayModule = new WithinDayConfigGroup();
-        Config config = ConfigUtils.loadConfig(configPath, withindayModule);
-
-        applyCommandlineOverrides(config, args);
-        return config;
+        MATSimApplication.execute(RunDiscreteModeChoiceWithinDay.class, args);
     }
 
     @Override
@@ -67,30 +53,8 @@ public class RunDiscreteModeChoiceWithinDay extends RunWithinDay {
     }
 
     @Override
-        protected AbstractModule createModule(Scenario scenario, Config config) {
-            return new AbstractModule() {
-                @Override
-                public void install() {
-                    // Selector
-                    bind(AgentSelector.class).asEagerSingleton();
-
-                    // Bind standard MATSim Within-Day components for the baseline
-                    bind(WithinDayObserver.class).to(DiscreteModeChoiceObserver.class).asEagerSingleton();
-                    bind(WithinDayReplanner.class).to(DiscreteModeChoiceReplanner.class).asEagerSingleton();
-                    bind(CommunicationManager.class).asEagerSingleton();
-                    addControllerListenerBinding().to(CommunicationManager.class);
-
-                    // Live access to MATSim's standard scoring tracker
-                    bind(ScoringFunctionFactory.class).to(SplitAwareScoringFunctionFactory.class).asEagerSingleton();
-                    bind(MatsimScoreTracker.class).asEagerSingleton();
-                    addEventHandlerBinding().to(MatsimScoreTracker.class);
-
-                    // Within-Day Mode Choice Listener
-                    bind(WithinDayModeChoiceListener.class).asEagerSingleton();
-                    addMobsimListenerBinding().to(WithinDayModeChoiceListener.class);
-                    addEventHandlerBinding().to(WithinDayModeChoiceListener.class);
-                    addControllerListenerBinding().to(WithinDayModeChoiceListener.class);
-                }
-            };
-        }
+    protected AbstractModule createWithinDayModule(Config config) {
+        // The scenario has no calibrated scoring of its own, so the split aware scoring factory is bound.
+        return new WithinDayModule(config, DiscreteModeChoiceReplanner.class, DiscreteModeChoiceObserver.class, true);
+    }
 }

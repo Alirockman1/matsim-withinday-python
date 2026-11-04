@@ -137,13 +137,17 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         QSim sim = (QSim) e.getQueueSimulation();
         double currentTime = e.getSimulationTime();
 
-        // Pick all agents that end their activity at the current simulation time.
-        sim.getAgents().values().stream()
-            .filter(p -> this.agentSelector.contains(p.getId()))
-            .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
-            .filter(p -> p.getActivityEndTime() == currentTime)
-            .filter(this.agentSelector::shouldReplan)
-            .forEach(p -> this.customReplanner.replanNextTrip(p, sim, currentTime));
+        // Pick all agents that end their activity at the current simulation time. Only selected
+        // agents can replan, so look those up instead of scanning every agent in the mobsim.
+        Map<Id<Person>, MobsimAgent> agents = sim.getAgents();
+        for (Id<Person> agentId : this.agentSelector.getSelectedAgents()) {
+            MobsimAgent agent = agents.get(agentId);
+            if (agent == null || agent.getState() != MobsimAgent.State.ACTIVITY) {continue;}
+            if (agent.getActivityEndTime() != currentTime) {continue;}
+            if (!this.agentSelector.shouldReplan(agent)) {continue;}
+
+            this.customReplanner.replanNextTrip(agent, sim, currentTime);
+        }
     }
 
     /**
@@ -158,15 +162,18 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         QSim sim = (QSim) e.getQueueSimulation();
         double currentTime = e.getSimulationTime();
 
-        // Pick all agents that started their activity in the current step
-        sim.getAgents().values().stream()
-                .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
-                .filter(p -> activityStartTimeByAgent.containsKey(p.getId()))
-                .filter(p -> activityStartTimeByAgent.get(p.getId()) == currentTime)
-                .filter(p -> this.agentSelector.contains(p.getId()))
-                .forEach(p -> {
-                    this.customReplanner.step(p, sim, currentTime, false);
-                });
+        // Pick all agents that started their activity in the current step. The map only holds
+        // selected agents (see handleEvent), so iterate it instead of all agents in the mobsim.
+        Map<Id<Person>, MobsimAgent> agents = sim.getAgents();
+        for (Map.Entry<Id<Person>, Double> startedActivity : this.activityStartTimeByAgent.entrySet()) {
+            if (startedActivity.getValue() != currentTime) {continue;}
+            if (!this.agentSelector.contains(startedActivity.getKey())) {continue;}
+
+            MobsimAgent agent = agents.get(startedActivity.getKey());
+            if (agent == null || agent.getState() != MobsimAgent.State.ACTIVITY) {continue;}
+
+            this.customReplanner.step(agent, sim, currentTime, false);
+        }
     }
 
     /**

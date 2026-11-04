@@ -10,7 +10,8 @@ class WorkerNode:
 
     def __init__(self, java_run_script: str, output_directory: str, config_file_path: str, matsim_iteration: Any, 
                 num_threads: Any, replanner_class: Optional[str] = "default", observer_class: Optional[str] = "default",
-                java_heap: str = "12g", extra_config: Optional[Dict[str, Any]] = None):
+                java_heap: str = "12g", extra_config: Optional[Dict[str, Any]] = None,
+                extra_args: Optional[list] = None):
         """
         Initializes the distributed worker tuning node with simulation parameters and resource allocations.
 
@@ -23,7 +24,8 @@ class WorkerNode:
             replanner_class (Optional[str]): Custom within-day replanner class name, if applicable.
             observer_class (Optional[str]): Custom within-day observer class name, if applicable.
             java_heap (str): The maximum Java heap size (e.g., '12g', '16g'). Defaults to '12g'.
-            extra_config (Optional[Dict[str, Any]]): Additional key-value configuration parameters to inject."""
+            extra_config (Optional[Dict[str, Any]]): Additional key-value configuration parameters to inject.
+            extra_args (Optional[list]): Additional plain command line arguments for the run class."""
 
         self._java_run_script = java_run_script
         self._output_dir = output_directory
@@ -36,6 +38,7 @@ class WorkerNode:
         self._replanner_class = replanner_class
         self._observer_class = observer_class
         self._extra_config = extra_config or {}
+        self._extra_args = extra_args or []
 
     def run(self):
         """
@@ -45,13 +48,17 @@ class WorkerNode:
         Raises:
             subprocess.CalledProcessError: If the underlying Java simulation process fails with a non-zero exit code."""
             
+        # The container holds the shaded jar at a fixed path; a local run can point this at
+        # target/classes plus the dependency classpath instead.
+        classpath = os.environ.get("SIMULATION_JAR", "/app/simulation.jar")
+
         cmd = [
             "java",
             f"-Xmx{self._java_heap}",
             "-Djava.awt.headless=true",
-            "-cp", "/app/simulation.jar",
+            "-cp", classpath,
             f"{self._java_run_script}",
-            f"{self._config_path}",
+            "--config", f"{self._config_path}",
             f"--config:controller.outputDirectory={self._output_dir}",
             f"--config:controller.lastIteration={self._iteration}",
             f"--config:global.numberOfThreads={self._threads}"
@@ -67,5 +74,8 @@ class WorkerNode:
 
         if self._observer_class and self._observer_class != "default":
             cmd.append(f"--config:withinday.observer={self._observer_class}")
+
+        # Arguments the run class itself understands, e.g. the MATSimApplication options
+        cmd.extend(str(argument) for argument in self._extra_args)
 
         subprocess.run(cmd, check=True, env=os.environ)

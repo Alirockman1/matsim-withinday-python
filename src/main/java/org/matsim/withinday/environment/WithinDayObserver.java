@@ -145,17 +145,36 @@ public abstract class WithinDayObserver {
         List<String> availableModes = new java.util.ArrayList<>(AgentAssetInventory.getSimulationModes());
 
         // Check standard mode availability (asset modes)
-        String carAvail = (String) person.getAttributes().getAttribute("car_avail");
+        String carAvail = readAvailability(person, "car_avail", "carAvail");
         boolean hasCarAccess = carAvail == null || !carAvail.trim().equalsIgnoreCase("never");
 
-        Object bikeAvailAttr = person.getAttributes().getAttribute("bike_avail");
-        boolean hasBikeAccess = bikeAvailAttr == null || !String.valueOf(bikeAvailAttr).trim().equalsIgnoreCase("never");
+        String bikeAvail = readAvailability(person, "bike_avail", "bikeAvail");
+        boolean hasBikeAccess = bikeAvail == null || !bikeAvail.trim().equalsIgnoreCase("never");
 
         // Remove restricted asset modes if access is denied
         if (!hasCarAccess) {availableModes.remove("car");}
         if (!hasBikeAccess) {availableModes.remove("bike");}
 
         return availableModes;
+    }
+
+    /**
+     * Reads an availability attribute under any of the given keys. Scenarios differ in their
+     * naming: this project writes {@code car_avail}, MATSim and the Open Berlin population write
+     * {@code carAvail}.
+     *
+     * @param person        The person whose attributes are read.
+     * @param attributeKeys Attribute names to try, in order.
+     * @return The first value found, or {@code null} if the person carries none of them.
+     */
+    private static String readAvailability(Person person, String... attributeKeys) {
+        for (String attributeKey : attributeKeys) {
+            Object value = person.getAttributes().getAttribute(attributeKey);
+            if (value != null) {
+                return String.valueOf(value);
+            }
+        }
+        return null;
     }
 
     /**

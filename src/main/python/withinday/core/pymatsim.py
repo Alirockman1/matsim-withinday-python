@@ -2,7 +2,7 @@ import os
 import time
 from withinday.core.nodes import WorkerNode
 
-def run_simulation(run_script="org.matsim.withinday.core.RunWithinDay", extra_config=None):
+def run_simulation(run_script="org.matsim.withinday.core.RunWithinDay", extra_config=None, extra_args=None):
     if extra_config is None:
         extra_config = {}
 
@@ -12,7 +12,11 @@ def run_simulation(run_script="org.matsim.withinday.core.RunWithinDay", extra_co
     output_dir = os.environ.get("MATSIM_OUTPUT_BASE")
     objective = os.environ.get("OBJECTIVE")
 
-    config_path = f"/app/scenarios/{scenario}/input/config.xml"
+    # Scenarios differ in their config file name, so both the base directory and the file name
+    # can be set from the environment. The defaults keep the containerized layout.
+    scenario_base_dir = os.environ.get("SCENARIO_BASE_DIR", "/app/scenarios")
+    config_name = os.environ.get("CONFIG_FILE", "config.xml")
+    config_path = f"{scenario_base_dir}/{scenario}/input/{config_name}"
     
     if objective == "multi":
         num_agent_per_iter = int(os.environ.get("AGENTS_PER_ITERATION"))
@@ -30,7 +34,8 @@ def run_simulation(run_script="org.matsim.withinday.core.RunWithinDay", extra_co
         replanner_class=os.environ.get("REPLANNER_CLASS", "default"),
         observer_class=os.environ.get("OBSERVER_CLASS", "default"),
         java_heap=os.environ.get("JAVA_HEAP", "12g"),
-        extra_config=extra_config
+        extra_config=extra_config,
+        extra_args=extra_args
     )
 
     try:
