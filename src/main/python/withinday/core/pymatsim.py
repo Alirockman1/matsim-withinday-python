@@ -12,7 +12,7 @@ def run_simulation(run_script="org.matsim.withinday.core.RunWithinDay", extra_co
     output_dir = os.environ.get("MATSIM_OUTPUT_BASE")
     objective = os.environ.get("OBJECTIVE")
 
-    config_path = f"/app/scenarios/{scenario}/input/config.xml"
+    config_path = f"/app/scenarios/{scenario}/input/{os.environ.get("CONFIG")}"
     
     if objective == "multi":
         num_agent_per_iter = int(os.environ.get("AGENTS_PER_ITERATION"))

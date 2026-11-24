@@ -1,8 +1,9 @@
 # --- PARAMETERS (Change these as needed to test your setup) ---
 $RUN_SCRIPT = "/app/src/projects/modechoice/discrete_choice/python/core/run_discrete_mode_choice.py"
+$CONFIG_NAME = "config_basic.xml"
 $OBSERVER_CLASS = "DiscreteModeChoiceObserver"
 $REPLANNER_CLASS = "DiscreteModeChoiceReplanner"
-$SCENARIO_NAME = "sioux-falls"
+$SCENARIO_NAME = "sioux_falls"
 $OBJECTIVE = "single" 
 
 $MATSIM_ITERATION = "100"
@@ -99,6 +100,7 @@ if($REBUILT_DOCKER){
 # 7. Execute Docker Run Container with Complete Environment Matrix
 Write-Host "Launching containerized simulation environment..." -ForegroundColor Green
 wsl docker run --rm -it `
+    -e CONFIG="$CONFIG_NAME"  `
     -e OBJECTIVE="$OBJECTIVE" `
     -e AGENTS_PER_ITERATION="$NUM_AGENTS_PER_ITERATION" `
     -e MATSIM_OUTPUT_BASE="/app/scenarios/${SCENARIO_NAME}/output" `

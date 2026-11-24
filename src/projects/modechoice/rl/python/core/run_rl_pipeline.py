@@ -20,7 +20,9 @@ def run_rl_pipeline():
         "agentModeChoice.epsilonDecay": params_dictionary.get("epsilon_decay"),
         "agentModeChoice.epsilonMinimum": params_dictionary.get("epsilon_minimum"),
         "agentModeChoice.discontinuityPenalty": params_dictionary.get("w_1", 1.0),
-        "agentModeChoice.retrievalCostPenalty": params_dictionary.get("w_2", 1.0)
+        "agentModeChoice.retrievalCostPenalty": params_dictionary.get("w_2", 1.0),
+        "agentModeChoice.filterZoneCount": params_dictionary.get("filter_zone_count"),
+        "withinday.samplingPercentage": params_dictionary.get("train_percentage")
     }
 
     # Build upon the base runner by injecting the RL config parameters

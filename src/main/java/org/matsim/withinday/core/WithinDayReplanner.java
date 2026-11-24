@@ -115,6 +115,11 @@ public abstract class WithinDayReplanner {
             ));
         }
 
+        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
+            agent.getId(), 
+            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        );
+
         Activity currentActivity = (Activity) currentElement;
         Plan modifiablePlan = WithinDayAgentUtils.getModifiablePlan(agent);
 
@@ -133,6 +138,8 @@ public abstract class WithinDayReplanner {
 
         Map<String, Object> action = determineAction(agent, unmodifiedNextTrip, demographics, state);
         String chosenMode = (String) action.get("mode");
+
+        experience.recordExperiencedMode(chosenMode);
 
         if (sim.getScenario().getConfig().qsim().getMainModes().contains(chosenMode)) {
             WithinDayAgentUtils.addVehicleToQSimIfNecessary(
@@ -165,12 +172,11 @@ public abstract class WithinDayReplanner {
         Trip completedTrip = findCompletedTrip(agent);
         if (completedTrip == null) return;
 
-        Map<String, Object> metrics = extractTripMetrics(completedTrip);
-        String currentModeUsed = (String) metrics.get("mode");
+        String modeUsed = experience.getExperiencedModes().getLast();
 
         // Get the trip Kai-nagel score
         WithinDayRealTimeScoringEngine rewardCalculator = this.customObserver.tripEvaluationMetrics(
-            agent, currentModeUsed, completedTrip);
+            agent, modeUsed, completedTrip);
         double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
 
         Map<String, Object> nextState = this.customObserver.observeState(agent, sim, completedTrip, simulationTime, true);
@@ -179,7 +185,7 @@ public abstract class WithinDayReplanner {
             experience.finalizeDay(rewardCalculator.getAccumulatedDayReward(), rewardCalculator.getAccumulatedDayScore());
         }
 
-        experience.recordTrip(currentModeUsed, currentStepMatsimScore, 0);
+        experience.recordTripUtils(currentStepMatsimScore, 0);
         
         if (rescheduleActivityEndTime){
             rescheduleActivityEnd(agent, sim, simulationTime, false);
@@ -273,7 +279,7 @@ public abstract class WithinDayReplanner {
      * @param completedTrip The completed trip instance to analyze.
      * @return A map containing aggregated trip metrics.
      */
-    protected Map<String, Object> extractTripMetrics(Trip completedTrip) {
+    private Map<String, Object> extractTripMetrics(Trip completedTrip) {
         double totalTripDistance = 0;
         double totalTripTravelTime = 0;
         String currentModeUsed = "unknown";

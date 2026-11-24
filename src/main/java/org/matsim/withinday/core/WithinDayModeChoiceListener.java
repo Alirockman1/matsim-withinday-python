@@ -30,7 +30,10 @@ import org.matsim.withinday.utils.StateEngine;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -55,7 +58,7 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     @Inject MatsimScoreTracker scoreTracker;
     @Inject AgentSelector agentSelector;
 
-    private Map<Id<Person>, Double> activityStartTimeByAgent = new HashMap<>();
+    private final Map<Id<Person>, Double> pendingActivityStarts = new LinkedHashMap<>();
     
     /**
      * Defines the execution priority of this listener relative to other MATSim controler listeners.
@@ -101,8 +104,8 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
         System.out.println("Temporary Log: The number of agents in the training set are: " + this.agentSelector.getSimulationSubspaceSize());
         System.out.println("Temporary Log: The number of agents in the test set are: " + this.agentSelector.getSimulationTestSize());
 
-        System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationSubspace());
-        System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationTestSubspace());
+        //System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationSubspace());
+        //System.out.println("Temporary Log: The agent exclusively for the test phase are " + this.agentSelector.getAgentsFromSimulationTestSubspace());
 
         selectedAgents.forEach(agentId -> {
             int assignedTag = this.agentSelector.getAgentTag(agentId);
@@ -121,7 +124,7 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     @Override
     public void handleEvent(ActivityStartEvent event) {
         if (this.agentSelector.contains(event.getPersonId())) {
-            this.activityStartTimeByAgent.put(event.getPersonId(), event.getTime());
+            this.pendingActivityStarts.put(event.getPersonId(), event.getTime());
         }
     }
 
@@ -133,17 +136,20 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
      */
     @Override
     public void notifyMobsimBeforeSimStep(MobsimBeforeSimStepEvent e) {
-        this.customReplanner.initEditTrips();
         QSim sim = (QSim) e.getQueueSimulation();
         double currentTime = e.getSimulationTime();
+        Map<Id<Person>, MobsimAgent> simAgents = sim.getAgents();
 
-        // Pick all agents that end their activity at the current simulation time.
-        sim.getAgents().values().stream()
-            .filter(p -> this.agentSelector.contains(p.getId()))
+        this.agentSelector.getSelectedAgents().stream()
+            .map(simAgents::get)
+            .filter(Objects::nonNull)
             .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
             .filter(p -> p.getActivityEndTime() == currentTime)
             .filter(this.agentSelector::shouldReplan)
-            .forEach(p -> this.customReplanner.replanNextTrip(p, sim, currentTime));
+            .forEach(p -> {
+                this.customReplanner.initEditTrips();
+                this.customReplanner.replanNextTrip(p, sim, currentTime);
+            });
     }
 
     /**
@@ -154,19 +160,26 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
      */
     @Override
     public void notifyMobsimAfterSimStep(MobsimAfterSimStepEvent e) {
-        this.customReplanner.initEditTrips();
+        if (this.pendingActivityStarts.isEmpty()) return;
+
         QSim sim = (QSim) e.getQueueSimulation();
         double currentTime = e.getSimulationTime();
+        Map<Id<Person>, MobsimAgent> simAgents = sim.getAgents();
+        
+        List<Id<Person>> arrived = this.pendingActivityStarts.entrySet().stream()
+            .filter(entry -> entry.getValue() <= currentTime)
+            .map(Map.Entry::getKey)
+            .toList();
+        arrived.forEach(this.pendingActivityStarts::remove);
 
-        // Pick all agents that started their activity in the current step
-        sim.getAgents().values().stream()
-                .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
-                .filter(p -> activityStartTimeByAgent.containsKey(p.getId()))
-                .filter(p -> activityStartTimeByAgent.get(p.getId()) == currentTime)
-                .filter(p -> this.agentSelector.contains(p.getId()))
-                .forEach(p -> {
-                    this.customReplanner.step(p, sim, currentTime, false);
-                });
+        if (arrived.isEmpty()) return;
+        this.customReplanner.initEditTrips();
+
+        arrived.stream()
+            .map(simAgents::get)
+            .filter(Objects::nonNull)
+            .filter(p -> p.getState() == MobsimAgent.State.ACTIVITY)
+            .forEach(p -> this.customReplanner.step(p, sim, currentTime, false));
     }
 
     /**
@@ -178,7 +191,7 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
     @Override
     public void notifyIterationEnds(IterationEndsEvent event){
         log.info("Cleaning up listener cache and inventory for iteration {}", event.getIteration());
-        this.activityStartTimeByAgent.clear();
+        this.pendingActivityStarts.clear();
         this.customReplanner.reset(event);
         this.agentSelector.reset();
     }
@@ -190,7 +203,7 @@ MobsimAfterSimStepListener, ActivityStartEventHandler {
      */
     @Override
     public void reset(int iteration) {
-        this.activityStartTimeByAgent.clear();
+        this.pendingActivityStarts.clear();
     }
    
 }

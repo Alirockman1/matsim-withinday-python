@@ -7,7 +7,12 @@ import org.matsim.api.core.v01.Scenario;
 import org.matsim.api.core.v01.TransportMode;
 import org.matsim.core.config.Config;
 import org.matsim.core.config.ConfigUtils;
+import org.matsim.core.config.groups.QSimConfigGroup;
+import org.matsim.core.config.groups.ReplanningConfigGroup;
+import org.matsim.core.config.groups.RoutingConfigGroup;
+import org.matsim.core.config.groups.ScoringConfigGroup;
 import org.matsim.core.controler.AbstractModule;
+import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
 import org.matsim.core.router.util.TravelTime;
 import org.matsim.core.scoring.ScoringFunctionFactory;
 import org.matsim.withinday.core.AgentSelector;
@@ -46,8 +51,6 @@ public class RunRLModeChoice extends RunWithinDay {
                 ConfigUtils.loadConfig(secondaryParamsFile.getAbsolutePath(), customGroupModule);
             }
         }
-        
-        System.out.println("Model File Name: " + modelFileName);
 
         // Apply command-line parameter overrides
         applyCommandlineOverrides(config, args);
@@ -61,9 +64,6 @@ public class RunRLModeChoice extends RunWithinDay {
         final String replannerClass = (withindayModule != null) ? withindayModule.getParams().get("replanner") : null;
         final String observerClass = (withindayModule != null) ? withindayModule.getParams().get("observer") : null;
 
-        System.out.println("Replanner Class: " + replannerClass);
-        System.out.println("Observer Class: " + observerClass);
-
         return new AbstractModule() {
             @Override
             public void install() {
@@ -72,7 +72,7 @@ public class RunRLModeChoice extends RunWithinDay {
                 addControllerListenerBinding().to(CommunicationManager.class);
 
                 // Selector
-                bind(AgentSelector.class).asEagerSingleton();
+                bind(AgentSelector.class).to(ZoneRestrictedAgentSelector.class).asEagerSingleton();
                 
                 // Observer & Replanner
                 bindDynamicClass(WithinDayReplanner.class, replannerClass, CustomRLReplanner.class);

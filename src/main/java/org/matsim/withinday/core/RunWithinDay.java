@@ -13,6 +13,7 @@ import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.controler.Controller;
 import org.matsim.core.controler.ControllerUtils;
 import org.matsim.core.controler.OutputDirectoryHierarchy.OverwriteFileSetting;
+import org.matsim.core.gbl.MatsimRandom;
 import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
 import org.matsim.core.scenario.ScenarioUtils;
 
@@ -32,6 +33,10 @@ public abstract class RunWithinDay {
     public final void run(String[] args) {
         // Load Configurations (handled by subclass to decide if custom groups are included)
         Config config = loadConfiguration(args);
+
+        Long globalSeed = Long.parseLong(System.getenv("SEED"));
+        config.global().setRandomSeed(globalSeed);
+        MatsimRandom.reset(globalSeed);
 
         // Configure Output Directory and File Intervals
         setupOutputSettings(config);
@@ -98,13 +103,23 @@ public abstract class RunWithinDay {
         config.scoring().addModeParams(new ScoringConfigGroup.ModeParams("walk"));
         config.qsim().setVehiclesSource(QSimConfigGroup.VehiclesSource.modeVehicleTypesFromVehiclesData);
 
-        // Reset replanning strategies to pure 'KeepLastSelected'
+        // Clear existing replanning strategies
         config.replanning().clearStrategySettings();
-        config.replanning().addStrategySettings(
-            new ReplanningConfigGroup.StrategySettings()
-                .setStrategyName(DefaultPlanStrategiesModule.DefaultSelector.KeepLastSelected)
-                .setWeight(1.0)
-        );
+
+        ReplanningConfigGroup.StrategySettings primaryStrategy = new ReplanningConfigGroup.StrategySettings();
+        primaryStrategy.setStrategyName(DefaultPlanStrategiesModule.DefaultSelector.ChangeExpBeta);
+        primaryStrategy.setWeight(0.7);
+        config.replanning().addStrategySettings(primaryStrategy);
+
+        // Standard MATSim Mode Choice strategy set to 30% (weight 0.3)
+        ReplanningConfigGroup.StrategySettings matsimModeChoice = new ReplanningConfigGroup.StrategySettings();
+        matsimModeChoice.setStrategyName(DefaultPlanStrategiesModule.DefaultStrategy.SubtourModeChoice);
+        matsimModeChoice.setWeight(0.3);
+        matsimModeChoice.setDisableAfter(400);
+        config.replanning().addStrategySettings(matsimModeChoice);
+        config.subtourModeChoice().setModes(new String[]{"car", "bike", "pt", "pedestrian"});
+        config.subtourModeChoice().setChainBasedModes(new String[]{"car", "bike"});
+        config.subtourModeChoice().setConsiderCarAvailability(true);
     }
 
     /**

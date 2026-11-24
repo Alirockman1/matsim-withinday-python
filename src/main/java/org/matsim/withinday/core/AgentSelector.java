@@ -57,7 +57,7 @@ public class AgentSelector {
     private static final Logger log = LogManager.getLogger(AgentSelector.class);
 
     private static final double DEFAULT_TRAIN_PERCENTAGE = 0.10;
-    private static final double DEFAULT_TEST_TO_TRAIN_RATIO = 0.25;
+    protected static final double DEFAULT_TEST_TO_TRAIN_RATIO = 0.25;
         
     private final Scenario scenario;
     private final Long randomSeed;
@@ -70,6 +70,7 @@ public class AgentSelector {
     
     // Active subset of agents participating in the current iteration (Tier 2)
     private final Set<Id<Person>> selectedAgents = new HashSet<>();
+    private int totalAgents;
     
     // Set of pre-allocated unique numeric tags mapped to active agents for communication integrity
     private final Set<Integer> uniqueAgentTags = new HashSet<>();
@@ -87,12 +88,17 @@ public class AgentSelector {
     @Inject
     public AgentSelector(Scenario scenario, WithinDayConfigGroup configGroup) {
         this.scenario = scenario;
-        this.randomSeed = 42L;
+        this.randomSeed = scenario.getConfig().global().getRandomSeed();
         this.configGroup = configGroup;
         this.numAgentsPerIteration = this.configGroup.getAgentsPerIteration();
 
         createUniqueTags();
     }
+    
+    /**
+     * Assigns the total number of agents to be filtered through in the simulation.
+     */
+    protected int samplingBaseSize(int eligibleCount) {return eligibleCount;}
 
     /**
      * Returns the selected agent set participating in the current simulation iteration.
@@ -220,8 +226,15 @@ public class AgentSelector {
         long trainSeed = this.randomSeed + 1L;
         
         // Sample the train dataset
-        int numTrain = (int) Math.max(1, Math.round(total * trainPercentage));
-        numTrain = Math.min(numTrain, total - 1);
+        int samplePopulationSize = samplingBaseSize(total);
+        int requestedTrain = (int) Math.max(1, Math.round(samplePopulationSize * trainPercentage));
+        int maxTrain = (int) Math.floor(samplePopulationSize / (1.0 + DEFAULT_TEST_TO_TRAIN_RATIO));
+        int numTrain = Math.max(1, Math.min(requestedTrain, Math.min(maxTrain, samplePopulationSize - 1)));
+
+        if (numTrain < requestedTrain) {
+            log.warn("AgentSelector: requested {} train agents but only {} fit in the eligible pool of {}.",
+                    requestedTrain, numTrain, samplePopulationSize);
+        }
 
         List<Person> shuffledForTrain = new ArrayList<>(allPersons);
         Collections.shuffle(shuffledForTrain, new Random(trainSeed));
@@ -424,7 +437,5 @@ public class AgentSelector {
      * @param person The MATSim person object being evaluated.
      * @return {@code true} if the person meets eligibility criteria; {@code false} to exclude them.
      */
-    private boolean isEligiblePerson(Person person) {
-        return true;
-    }    
+    protected boolean isEligiblePerson(Person person) {return true;}    
 }

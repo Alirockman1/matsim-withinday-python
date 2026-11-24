@@ -10,7 +10,8 @@
 # 1. VARIABLES
 # ------------------------------------------------------------------------------
 $ProjectRoot           = $PSScriptRoot            # folder that contains scenarios\ and the Dockerfile
-$ScenarioName          = "sioux-falls"
+$CONFIG_NAME           = "config.xml"
+$ScenarioName          = "sioux_falls"
 $Objective             = "single_agent"           # triggers the optimization flow
 $NumWorkers            = 3                        # parallel Optuna workers (= Slurm array size)
 $NumAgentsPerIteration = "1"
@@ -167,6 +168,7 @@ function Get-DockerArguments {
     param([int]$WorkerId, [string]$WorkerOutputDir, [string]$WSL_WorkerOutput)
     return @(
         'run', '--rm', '--name', "matsim-optuna-$WorkerId",
+        '--env', "CONFIG=$CONFIG_NAME",
         '--env', "OBJECTIVE=$Objective",
         '--env', "AGENTS_PER_ITERATION=$NumAgentsPerIteration",
         '--env', "MATSIM_ITERATION=$MatsimIteration",

@@ -34,7 +34,7 @@ import org.matsim.withinday.utils.WithinDayAgentExperience;
 import org.matsim.withinday.utils.WithinDayConfigGroup;
 
 import modechoice.rl.java.utils.CustomConfigGroup;
-import modechoice.rl.java.utils.CustomIterationEndReporting;
+import modechoice.rl.java.utils.CustomReporting;
 import modechoice.rl.java.utils.TrafficAnalysisZoneLoader;
 
 import com.google.inject.Inject;
@@ -103,15 +103,21 @@ public class CustomRLReplanner extends WithinDayReplanner {
         jsonMap.put("outputDirectory", absoluteOutputDirectory);
         jsonMap.put("modelFileName", fullPath.getAbsolutePath());
         jsonMap.put("checkpointModel", latestCheckpointPath);
+        jsonMap.put("randomSeed", config.global().getRandomSeed());
 
         communicationManager.httpPost(gson.toJson(jsonMap), "/session/configure", 30, null);
 
         // Initialize the network traffic analysis zonal map
-        String tazShapefileFullPath = "";
         try {
             String tazFileName = customConfigGroup.getTAZFileName();
             if (tazFileName != null && !tazFileName.isEmpty()) {
-                tazShapefileFullPath = new File(absoluteInputDirectory, tazFileName).getAbsolutePath();
+                
+                File tazFile = new File(tazFileName);
+                if (!tazFile.isAbsolute()) {
+                    tazFile = new File(absoluteInputDirectory, tazFileName);
+                }
+                
+                String tazShapefileFullPath = tazFile.getAbsolutePath();
 
                 TrafficAnalysisZoneLoader.loadZonesSortedByDistanceFromCenter(tazShapefileFullPath, "TAZ_ID", scenario);
             }
@@ -131,9 +137,10 @@ public class CustomRLReplanner extends WithinDayReplanner {
             stateObservation.put("subpopulation", agentDemographics.getOrDefault("subpopulation", "default"));
         }
 
-        //////
-        double decisionTime = agent.getActivityEndTime();
-        tripStartTimes.put(agent.getId(), decisionTime);
+        // Retrieve agent experience to check for pending rewards from the prior trip
+        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(agent.getId(), 
+            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        );
 
         if (log.isInfoEnabled() && stateObservation.containsKey("features")) {
             @SuppressWarnings("unchecked")
@@ -141,6 +148,11 @@ public class CustomRLReplanner extends WithinDayReplanner {
             Map<String, Object> rawState = (Map<String, Object>) features.get("rawStateObservation");
             int[] bitVector = (int[]) features.get("rawBitStateRepresentation");
 
+            experience.storePendingDecisionState(rawState, bitVector);
+            
+            ////
+            double decisionTime = agent.getActivityEndTime();
+            tripStartTimes.put(agent.getId(), decisionTime);
             log.info("Temporary Log: DECISION_STATE_CHECK [Agent: {} | Iteration: {}] " +
                      "-> CurrentZone: {}, ScheduledZone: {}, DistanceBin: {}, TimeBin: {}, CongestionLevel: {}, AssetState: {} | BitVector: {}",
                 agent.getId(),
@@ -153,21 +165,16 @@ public class CustomRLReplanner extends WithinDayReplanner {
                 rawState.get("assetState"),
                 java.util.Arrays.toString(bitVector)
             );
+            ///////
         }
-        ///////
-
-        // Retrieve agent experience to check for pending rewards from the prior trip
-        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(agent.getId(), 
-            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
-        );
 
         List<String> experiencedModes = experience.getExperiencedModes();
-        String PreviousMode = null;
+        /**String PreviousMode = null;
         if (experiencedModes.size() != 0){
             PreviousMode = experiencedModes.get(experiencedModes.size() - 1);
         }
 
-        stateObservation.put("previousMode", PreviousMode);
+        stateObservation.put("previousMode", PreviousMode);*/
 
         // Request decision from serving model via HTTP POST
         String chosenMode = retrieveModeChoiceFromServingModel(stateObservation, trainingFlag);
@@ -199,20 +206,19 @@ public class CustomRLReplanner extends WithinDayReplanner {
      */
     @Override
     public void step(MobsimAgent agent, QSim sim, double simulationTime, boolean rescheduleActivityEndTime) {
-        double totalTripDistance = 0;
-        double totalTripTravelTime = 0;
-        int mainModeLegCount = 0;
-        String currentModeUsed = "unknown";
-
         Map<String, Object> demographics = this.customObserver.getAgentDemographicRecord(agent);
         Id<Person> agentId = (Id<Person>) demographics.get("agentId");
+
+        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
+            agentId, 
+            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        );
 
         Trip completedTrip = getCompletedTrip(agent);
         
         if (completedTrip == null) return;
 
-        Activity previousActivity = completedTrip.getOriginActivity();     
-        List<Leg> legsInTrip = completedTrip.getLegsOnly();
+        Activity previousActivity = completedTrip.getOriginActivity();
 
         // --- EXECUTION TRACKING & LOGGING ---
         double actualDepartureTime = tripStartTimes.getOrDefault(agentId, simulationTime);
@@ -232,30 +238,24 @@ public class CustomRLReplanner extends WithinDayReplanner {
             actualTravelTime,
             scheduleError
         );
-
-        for (Leg leg : legsInTrip) {
-            totalTripDistance += leg.getRoute().getDistance();
-            totalTripTravelTime += leg.getTravelTime().orElse(0.0);
-            
-            if (!leg.getMode().contains("walk")) {
-                mainModeLegCount++;
-                currentModeUsed = leg.getMode();
-            }
-        }
-
-        int numberOfTransfers = Math.max(0, mainModeLegCount - 1);
         
         // REWARD PARAMETER COMPUTATION
-        WithinDayRealTimeScoringEngine rewardCalculator = updateAndGetStepwiseScoringEngine(agent, previousActivity, currentModeUsed);
+        String modeUsed = experience.getExperiencedModes().getLast();
+        WithinDayRealTimeScoringEngine rewardCalculator = updateAndGetStepwiseScoringEngine(agent, previousActivity, modeUsed);
         double currentStepMatsimScore = rewardCalculator.getCurrentStepTripScore();
         double currentStepReward = rewardCalculator.getCurrentStepReward();
 
-        WithinDayAgentExperience experience = this.agentExperiences.computeIfAbsent(
-            agentId, 
-            id -> new WithinDayAgentExperience(id, this.customObserver.getOrCreateScoringEngine(id))
+        experience.recordTripUtils(currentStepMatsimScore, currentStepReward);
+
+        // Log the iteration step
+        CustomReporting.writeStepResultsToCsv(
+            scenario,
+            StateEngine.currentIteration,
+            agentId,
+            experience
         );
 
-        experience.recordTrip(currentModeUsed, currentStepMatsimScore, currentStepReward);
+        experience.clearPendingDecisionState();
 
         // --- NEXT STATE DATA ---
         Map<String, Object> nextState = this.customObserver.observeState(agent, sim, completedTrip, simulationTime, true);
@@ -459,7 +459,7 @@ public class CustomRLReplanner extends WithinDayReplanner {
     @Override
     protected void handleIterationReporting(IterationEndsEvent event) {
         if (this.agentExperiences != null && !this.agentExperiences.isEmpty()) {
-            CustomIterationEndReporting.writeAgentStatsCsv(event, this.agentExperiences);
+            CustomReporting.writeAgentStatsCsv(event, this.agentExperiences);
         }
     }
 

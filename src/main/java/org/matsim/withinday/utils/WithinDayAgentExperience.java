@@ -2,6 +2,8 @@ package org.matsim.withinday.utils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
 import org.matsim.api.core.v01.Id;
 import org.matsim.api.core.v01.population.Person;
 import org.matsim.withinday.environment.WithinDayRealTimeScoringEngine;
@@ -32,6 +34,8 @@ public class WithinDayAgentExperience {
     private boolean hasPending = false;
     private double pendingReward = 0.0;
     private double pendingMatsimScore = 0.0;
+    private Map<String, Object> pendingRawState = null;
+    private int[] pendingBitVector = null;
 
     /**
      * Constructs an agent experience tracker instance for the specified person and scoring engine.
@@ -87,6 +91,12 @@ public class WithinDayAgentExperience {
     /** @return The pending score value. */
     public double getPendingMatsimScore() { return pendingMatsimScore; }
 
+    /** @return An integer array of binary bits representing the state vector, or {@code null} if no state is pending.*/
+    public int[] getPendingBitVector() { return pendingBitVector; }
+
+    /** @return A map of raw decision-time state feature key-value pairs, or {@code null} if no state is pending. */
+    public Map<String, Object> getPendingRawState() { return pendingRawState; }
+
     /**
      * Records the metrics for a completed trip.
      *
@@ -94,10 +104,13 @@ public class WithinDayAgentExperience {
      * @param score  The computed trip score.
      * @param reward The computed step reward.
      */
-    public void recordTrip(String mode, double score, double reward) {
-        this.experiencedModes.add(mode);
+    public void recordTripUtils(double score, double reward) {
         this.tripRewards.add(reward);
         this.tripScores.add(score);
+    }
+
+    public void recordExperiencedMode(String mode){
+        this.experiencedModes.add(mode);
     }
 
     /**
@@ -124,6 +137,24 @@ public class WithinDayAgentExperience {
     }
 
     /**
+     * Caches the agent's decision-time state observation (S_t) prior to trip execution.
+     * <p>
+     * Because MATSim's {@code WithinDayReplanner.step(...)} evaluates metrics after trip completion 
+     * (yielding the next state S_t+1), this method preserves the initial state S_t so that 
+     * state-action-reward tuples (S_t, A_t, R_t+1) can be accurately logged for variance and 
+     * ablation analysis.
+     * </p>
+     *
+     * @param rawState   The extracted raw feature map at decision time (e.g., origin/destination 
+     *                   zones, departure time bin, congestion level, asset state).
+     * @param bitVector  The discretized binary bit array representing the state vector.
+     */
+    public void storePendingDecisionState(Map<String, Object> rawState, int[] bitVector) {
+        this.pendingRawState = rawState;
+        this.pendingBitVector = bitVector;
+    }
+
+    /**
      * Checks whether there is an active pending reward awaiting processing.
      *
      * @return True if a pending reward exists, false otherwise.
@@ -137,5 +168,17 @@ public class WithinDayAgentExperience {
         this.hasPending = false;
         this.pendingReward = 0.0;
         this.pendingMatsimScore = 0.0;
+    }
+
+    /**
+     * Clears the cached decision-time state fields upon completion of the step logging pipeline.
+     * <p>
+     * Should be invoked immediately after the state-action-reward tuple (S_t, A_t, R_t+1) is 
+     * persisted to prevent state leakage or stale observations across subsequent trips.
+     * </p>
+     */
+    public void clearPendingDecisionState() {
+        this.pendingRawState = null;
+        this.pendingBitVector = null;
     }
 }

@@ -43,30 +43,6 @@ public class RunDiscreteModeChoiceWithinDay extends RunWithinDay {
     }
 
     @Override
-    protected void applyFrameworkSettings(Config config) {
-        config.routing().setNetworkRouteConsistencyCheck(RoutingConfigGroup.NetworkRouteConsistencyCheck.disable);
-        config.scoring().addModeParams(new ScoringConfigGroup.ModeParams("walk"));
-        config.qsim().setVehiclesSource(QSimConfigGroup.VehiclesSource.modeVehicleTypesFromVehiclesData);
-
-        // Clear existing replanning strategies
-        config.replanning().clearStrategySettings();
-
-        ReplanningConfigGroup.StrategySettings primaryStrategy = new ReplanningConfigGroup.StrategySettings();
-        primaryStrategy.setStrategyName(DefaultPlanStrategiesModule.DefaultSelector.ChangeExpBeta);
-        primaryStrategy.setWeight(0.7);
-        config.replanning().addStrategySettings(primaryStrategy);
-
-        // Standard MATSim Mode Choice strategy set to 30% (weight 0.3)
-        ReplanningConfigGroup.StrategySettings matsimModeChoice = new ReplanningConfigGroup.StrategySettings();
-        matsimModeChoice.setStrategyName(DefaultPlanStrategiesModule.DefaultStrategy.SubtourModeChoice);
-        matsimModeChoice.setWeight(0.3);
-        config.replanning().addStrategySettings(matsimModeChoice);
-        config.subtourModeChoice().setModes(new String[]{"car", "bike", "pt", "pedestrian"});
-        config.subtourModeChoice().setChainBasedModes(new String[]{"car", "bike"});
-        config.subtourModeChoice().setConsiderCarAvailability(true);
-    }
-
-    @Override
         protected AbstractModule createModule(Scenario scenario, Config config) {
             return new AbstractModule() {
                 @Override

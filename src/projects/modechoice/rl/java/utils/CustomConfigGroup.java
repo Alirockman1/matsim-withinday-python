@@ -17,6 +17,7 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
     private int validationInterval = 1;
     private double discontinuityPenalty = 1.0;
     private double retrievalCostPenalty = 1.5;
+    private int filterZoneCount = 0;
 
     // Optional Strings
     private String TAZFileName = null;
@@ -133,5 +134,11 @@ public class CustomConfigGroup extends ReflectiveConfigGroup {
 
     @StringSetter("autoEncoderModel")
     public void setEncoderModel(String autoEncoderModel) { this.autoEncoderModel = autoEncoderModel; }
+
+    @StringGetter("filterZoneCount")
+    public int getFilteredZonesCount() { return filterZoneCount; }
+
+    @StringSetter("filterZoneCount")
+    public void setFilteredZonesCount(int filterZoneCount) { this.filterZoneCount = filterZoneCount; }
 
 }

@@ -1,21 +1,25 @@
 # --- PARAMETERS (Change these as needed to test your setup) ---
 $RUN_SCRIPT = "/app/src/projects/modechoice/rl/python/core/run_rl_pipeline.py"
+$CONFIG_NAME = "synthetic/config.xml"
 $OBSERVER_CLASS = "CustomRLObserver"
 $REPLANNER_CLASS = "CustomRLReplanner"
-$SCENARIO_NAME = "sioux-falls"
+$SCENARIO_NAME = "sioux_falls"
 $OBJECTIVE = "single"#"multi_agent" 
 
-$MATSIM_ITERATION = "5"
-$MAX_TRAINING_ITERATION = "4"
+$MATSIM_ITERATION = "3001"
+$MAX_TRAINING_ITERATION = "3000"
 $NUM_THREADS = "1"
 $MEMORY = "12g"
+
 #$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=2.59894 w_2=3.405791"
-$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=1.0 w_2=1.0"
+$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=1.0 w_2=1.0 filter_zone_count=5 train_percentage=0.2"
+$SEED_NUMBER = "999"
+$INTERNAL_PORT = "5099"
 
 # Development Pipeline Toggles
 $NUM_AGENTS_PER_ITERATION = "1"
 $UPDATE_JAR = $false
-$REBUILT_DOCKER = $true
+$REBUILT_DOCKER = $false
 
 # Base Windows workspace directory 
 $CurrentDir = $PSScriptRoot
@@ -100,6 +104,8 @@ if($REBUILT_DOCKER){
 # 6. Execute Docker Run Container with Complete Environment Matrix
 Write-Host "Launching containerized simulation environment..." -ForegroundColor Green
 wsl docker run --rm -it `
+    -e INTERNAL_PORT="$INTERNAL_PORT" `
+    -e CONFIG="$CONFIG_NAME"  `
     -e OBJECTIVE="$OBJECTIVE" `
     -e AGENTS_PER_ITERATION="$NUM_AGENTS_PER_ITERATION" `
     -e MATSIM_OUTPUT_BASE="/app/scenarios/${SCENARIO_NAME}/output" `
@@ -112,6 +118,7 @@ wsl docker run --rm -it `
     -e REPLANNER_CLASS="$REPLANNER_CLASS" `
     -e OBSERVER_CLASS="$OBSERVER_CLASS" `
     -e RUN_SCRIPT="$RUN_SCRIPT" `
+    -e SEED="$SEED_NUMBER" `
     -v "${WSL_INPUT}:/app/scenarios/${SCENARIO_NAME}/input" `
     -v "${WSL_OUTPUT}:/app/scenarios/${SCENARIO_NAME}/output" `
     -v "${WSL_SHARED}:/app/shared_storage" `

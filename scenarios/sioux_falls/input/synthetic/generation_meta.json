@@ -1,0 +1,64 @@
+{
+  "link_sources": {
+    "snapped": 24320,
+    "unresolved": 398,
+    "median_dist_m": 91.59110058494721,
+    "p95_dist_m": 364.52235199916913
+  },
+  "real_notes": {},
+  "dropped_empty": 217,
+  "core": [
+    683753.2845000001,
+    4823885.832599999
+  ],
+  "total_jobs": 43197.19747200001,
+  "total_visits": 54225.6,
+  "adults_in_area": 54225.6,
+  "sample_rate": 0.0999978290295509,
+  "network": {
+    "n_links": 6718,
+    "skipped": {
+      "freeway": 215,
+      "too_short": 43,
+      "not_car": 3359
+    },
+    "bbox": [
+      678126.237,
+      4818750.2408,
+      687482.1438,
+      4832294.5857
+    ]
+  },
+  "leblanc_zone_tv_distance_weighted": 0.078,
+  "plan_stats": {
+    "interzonal_leg_share": {
+      "all": 0.83,
+      "work": 0.828,
+      "secondary": 0.833
+    },
+    "mode_share_legs": {
+      "bike": 0.05,
+      "car": 0.714,
+      "pedestrian": 0.127,
+      "pt": 0.109
+    },
+    "share_two_activity_plans": 0.595,
+    "share_multi_activity_plans": 0.405,
+    "share_with_work_and_extra_stop": 0.295,
+    "activities_per_plan_histogram": {
+      "1": 8938,
+      "2": 3938,
+      "3": 2140
+    },
+    "mean_trips_work_plans": 2.61,
+    "mean_trips_nonwork_plans": 2.41,
+    "mean_work_beeline_km": 3.05,
+    "median_work_beeline_km": 2.65
+  },
+  "matsim_qsim": {
+    "flowCapacityFactor": 0.1,
+    "storageCapacityFactor": 0.1
+  },
+  "n_persons": 15016,
+  "seed": 42
+}

@@ -1,0 +1,302 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE config SYSTEM "./dtd/config_v2.dtd">
+
+<config>
+	<module name="network">
+		<param name="inputNetworkFile" value="networkwithsidewalks.xml" />
+	</module>
+
+	<module name="plans">
+		<param name="inputPlansFile" value="population.xml" />
+		<param name="handlingOfPlansWithoutRoutingMode" value="useMainModeIdentifier" />
+	</module>
+
+	<module name="facilities" >
+		<param name="inputFacilitiesFile" value="facilities.xml.gz" />
+	</module>
+
+	<!-- Add Vehicles file with car, pedestrian and bike -->
+	<module name="vehicles" >
+		<param name="vehiclesFile" value="vehicles.xml" />
+	</module>
+
+	<!-- The PT schedule -->
+	<module name="transit">
+  	  	<param name="useTransit" value="true" />
+  	  	<param name="transitScheduleFile" value="schedule.xml" />
+ 		<param name="vehiclesFile" value="transitVehicles.xml" />
+  	 	<param name="transitModes" value="pt" />
+  	</module>
+
+	<module name="controller">
+		<param name="writeEventsInterval" value="1" />
+		<param name="writePlansInterval" value="1" />
+		<param name="eventsFileFormat" value="xml" />
+		<param name="outputDirectory" value="scenarios/sioux-falls/output"/>
+		<param name="firstIteration" value="0" />
+		<param name="lastIteration" value="801" />
+		<param name="mobsim" value="qsim" />
+		<param name="overwriteFiles" value="deleteDirectoryIfExists" />
+	</module>
+
+ 	<module name="qsim" >
+		<param name="vehiclesSource" value="modeVehicleTypesFromVehiclesData" />
+
+		<param name="startTime" value="00:00:00" />
+		<param name="endTime" value="30:00:00" />
+		<param name="flowCapacityFactor" value="0.1" /> <!-- 10 % scaled simulation -->
+		<param name="storageCapacityFactor" value="0.1" /> <!-- 10 % scaled simulation -->
+		<param name="numberOfThreads" value="4" />
+		<param name="snapshotperiod" value="00:00:10"/>
+
+		<!-- Defining main modes to simulate within QSim -->
+		<param name= "mainMode" value= "car,bike,pedestrian" />
+
+		<!-- Boolean. `true': stuck vehicles are removed, aborting the plan; `false': stuck vehicles are forced into the next link. `false' is probably the better choice. -->
+		<param name="removeStuckVehicles" value="false" />
+
+		<!-- time in seconds.  Time after which the frontmost vehicle on a link is called `stuck' if it does not move. -->
+		<param name="stuckTime" value="3600.0" />
+		<param name="timeStepSize" value="00:00:01" />
+
+		<!-- `queue' for the standard queue model, `withHolesExperimental' (experimental!!) for the queue model with holes -->
+		<!-- <param name="trafficDynamics" value="queue" /> -->
+
+		<!-- Allow vehicle passing within a link -->
+		<param name= "trafficDynamics" value= "queue" />
+
+	</module>
+
+	<!-- Plan calculate route -->
+	<module name="routing">
+		<param name="networkModes" value="car,bike,pedestrian" />
+		<param name="accessEgressType" value="accessEgressModeToLink"/>
+		<param name="clearDefaultTeleportedModeParams" value="true"/>
+
+		<!--<parameterset type="teleportedModeParameters">
+			<param name="mode" value="pt" />
+			<param name="teleportedModeSpeed" value="0.833" /> 
+			<param name="beelineDistanceFactor" value="1.3" />
+		</parameterset>-->
+
+		<parameterset type="teleportedModeParameters">
+            <param name="mode" value="walk" />
+            <param name="teleportedModeSpeed" value="1.38" />
+            <param name="beelineDistanceFactor" value="1.3" />
+        </parameterset>
+
+		<parameterset type="teleportedModeParameters">
+			<param name="mode" value="rl"/>
+			<param name="beelineDistanceFactor" value="1.0"/>
+			<param name="teleportedModeSpeed" value="1.0"/>
+		</parameterset>
+
+	</module>
+
+	<module name="scoring">
+
+        <param name="writeExperiencedPlans" value="true" />
+		<param name="brainExpBeta" value="1.0" />
+
+		<!-- Event based marginal utility values -->
+		<!-- [utils/hr] marginal utility of doing an activity.  normally positive.  also the opportunity cost of time if agent is doing nothing. -->
+		<param name="performing" value="23.29" />
+		
+		<!-- [utils/hr] marginal utility of waiting for an activity to start.  Recommended o be left as zero. -->
+		<param name="waiting" value="-0.84" />
+
+		<!-- [utils/hr] utility for arriving late (i.e. after the latest start time).  normally negative -->
+		<param name="lateArrival" value="-31.0" /> <!-- Used 1.5 of the performing as late is mostly undesirable -->
+
+		<!-- [utils/hr] utility for departing early (i.e. before the earliest end time). -->
+		<param name="earlyDeparture" value="-0.0" />
+
+		<!-- Travel based marginal utility values -->
+		<!-- [utils/unit_of_money] conversion of money (e.g. toll, distance cost) into utils -->
+		<param name="marginalUtilityOfMoney" value="1" />
+
+		<!-- [utils] utility of switching a line (= transfer penalty).  Normally negative -->
+		<param name="utilityOfLineSwitch" value="-1.0"/>
+
+		<!-- Car parameter set -->
+		<parameterset type= "modeParams" >
+			<param name= "mode" value= "car" />
+			
+			<!-- [utils] alternative-specific constant for car. -->
+			<param name="constant" value="-4.2" />
+
+			<!-- [unit_of_money/m] conversion of car distance into money -->
+			<param name="marginalUtilityOfDistance_util_m" value="0.0" />
+
+			<!-- [utils/hr] additional marginal utility of traveling by car.  normally negative.  this comes on top of the opportunity cost of time -->
+			<param name="marginalUtilityOfTraveling_util_hr" value="-6.0" />
+
+			<!-- [unit_of_money/m] conversion of car distance into money -->
+			<param name= "monetaryDistanceRate" value= "-0.0002" />
+		</parameterset>
+
+		<!-- PT parameter set -->
+		<parameterset type= "modeParams" >
+			<param name= "mode" value= "pt" />
+			
+			<!-- [utils] alternative-specific constant for pt.  Kept at the default value of Zero -->
+			<param name="constant" value="-0.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name="marginalUtilityOfDistance_util_m" value="0.0" />
+
+			<!-- [utils/hr] additional marginal utility of traveling by pt.  normally negative.  this comes on top of the opportunity cost of time -->
+			<param name="marginalUtilityOfTraveling_util_hr" value="-10.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name= "monetaryDistanceRate" value= "-0.00016" />
+		</parameterset>
+
+		<!-- Transported Walk parameter set -->
+		<parameterset type= "modeParams" >
+			<param name= "mode" value= "walk" />
+			
+			<!-- [utils] alternative-specific constant for walk.  Kept at the default value of Zero -->
+			<param name="constant" value="0.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name="marginalUtilityOfDistance_util_m" value="0.0" />
+
+			<!-- [utils/hr] additional marginal utility of traveling by pt.  normally negative.  this comes on top of the opportunity cost of time -->
+			<param name="marginalUtilityOfTraveling_util_hr" value="-12.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name= "monetaryDistanceRate" value= "0.0" />
+		</parameterset>
+
+		<!-- Bicycle parameter set -->
+		<parameterset type= "modeParams" >
+			<param name= "mode" value= "bike" />
+			
+			<!-- [utils] alternative-specific constant for walk.  Kept at the default value of Zero -->
+			<param name="constant" value="-1.5" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name="marginalUtilityOfDistance_util_m" value="0.0" />
+
+			<!-- [utils/hr] additional marginal utility of traveling by pt.  normally negative.  this comes on top of the opportunity cost of time -->
+			<param name="marginalUtilityOfTraveling_util_hr" value="-15.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name= "monetaryDistanceRate" value= "0.0" />
+		</parameterset>
+
+		<!-- Walking along the roadsides (network walk) parameter set -->
+		<parameterset type= "modeParams" >
+			<param name= "mode" value= "pedestrian" />
+			
+			<!-- [utils] alternative-specific constant for walk.  Kept at the default value of Zero -->
+			<param name="constant" value="0.0" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name="marginalUtilityOfDistance_util_m" value="0.0" />
+
+			<!-- [utils/hr] additional marginal utility of traveling by pt.  normally negative.  this comes on top of the opportunity cost of time -->
+			<param name="marginalUtilityOfTraveling_util_hr" value="-18.77" />
+
+			<!-- [unit_of_money/m] conversion of pt distance into money -->
+			<param name= "monetaryDistanceRate" value= "0.0" />
+		</parameterset>
+
+		<!-- Event typical values -->
+		<parameterset type="activityParams">
+			<!-- home -->
+			<param name="activityType" value="home" /> 
+			<param name="priority" value="1" />
+			<param name="typicalDuration" value="13:00:00" />
+			<param name="minimalDuration" value="01:00:00" />
+		</parameterset>
+
+		<parameterset type="activityParams">
+			<!-- Work -->
+			<param name="activityType" value="work" />
+			<param name="priority" value="1" />
+			<param name="typicalDuration" value="09:00:00" />
+			<param name="minimalDuration" value="08:00:00" />
+
+			<!-- When the location opens -->
+			<param name="openingTime" value="08:00:00" />
+			<param name="earliestEndTime" value="17:00:00" />
+			<!-- When the activity should start by -->
+			<param name="latestStartTime" value="09:00:00" />
+		</parameterset>
+
+		<parameterset type="activityParams">
+			<!-- Any activity appart from home and work -->
+			<param name="activityType" value="secondary" />
+			<param name="priority" value="1" />
+			<param name="typicalDuration" value="01:00:00" />
+			<param name="minimalDuration" value="00:30:00" /> <!-- Lowest possible time spent at the location -->
+			
+			<param name="openingTime" value="08:00:00" />
+			<param name="closingTime" value="20:00:00" />
+		</parameterset>
+
+	</module>
+
+	<!-- Replanning strategy for the route (and for the mode)-->
+	<module name="replanning">
+	 	<!-- Number of previous plans to keep in memory -->
+        <param name="maxAgentPlanMemorySize" value="5" />
+
+		<!-- Select from existing plans -->
+		<!-- Select 70% of the plans based on Logit model -->
+		<param name="ModuleProbability_1" value="0.7" />
+		<param name="Module_1" value="ChangeExpBeta" />
+
+		<!-- 5% of the plans are generated based on the traffic congestion-->
+		<param name="ModuleProbability_2" value="0.3" />
+		<param name="Module_2" value="ReRoute" />
+		<param name="ModuleDisableAfterIteration_2" value="420" />
+
+		<!-- 5% of the plans can modify their event start and end time -->
+		<!--<param name="ModuleProbability_4" value="0.05" /> -->
+		<!--<param name="Module_4" value="TimeAllocationMutator" />-->
+		<!--<param name="ModuleDisableAfterIteration_4" value="420" /> -->
+	</module>
+
+<!-- ====================================================================== -->
+
+	<module name="timeAllocationMutator" >
+		<param name="mutationRange" value="600.00" />
+	</module>
+
+<!-- ====================================================================== -->
+
+	<module name="transitRouter" >
+
+		<!-- additional time the router allocates when a line switch happens. Can be interpreted as a 'safety' time that agents need to safely transfer from one line to another -->
+		<param name="additionalTransferTime" value="0.0" />
+
+		<!-- step size to increase searchRadius if no stops are found -->
+		<param name="extensionRadius" value="500.0" />
+
+		<!-- maximum beeline distance between stops that agents could transfer to by walking -->
+		<param name="maxBeelineWalkConnectionDistance" value="300.0" />
+
+		<!-- the radius in which stop locations are searched, given a start or target coordinate -->
+		<param name="searchRadius" value="1500.0" />
+	</module>
+
+	<module name="travelTimeCalculator">
+		<param name="calculateLinkTravelTimes" value="true" />
+		<param name="travelTimeBinSize" value="900" /> 
+	</module>
+
+    <module name="withinday">
+        <param name="externalModelFileName" value="modeChoiceModel.xml" />
+		<param name="dataset" value="train" />
+        <!--<param name="trainAgentIDList" value="32286_2,43497_2" />-->
+		<!--<param name="trainAgentIDList" value="10047_1" />-->
+		<param name="samplingPercentage" value="0.01" />
+		<param name="agentsPerIteration" value="1" />
+        <param name="modes" value="car,pt,bike,pedestrian" />
+        <param name="tourBasedModes" value="car,bike" />
+    </module>
+
+</config>

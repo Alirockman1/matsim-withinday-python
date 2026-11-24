@@ -123,7 +123,6 @@ public class StateEngine{
      * @return An integer representing the encoded asset state combination.
      */
     public static int getAssetStateOnHand(Id<Person> agentId, Id<Link> currentLinkId) {
-        System.out.println("Temporary Log: The agent lind id is - " + currentLinkId.toString());
         String[] tourBasedModes = AgentAssetInventory.getSimulationTourBasedModes().toArray(new String[0]);
         Map<String, Integer> penaltyMap = AgentAssetInventory.getModeDiscontinuityPenalty(agentId, currentLinkId);
         
@@ -177,7 +176,7 @@ public class StateEngine{
      *
      * @return The total count of distance bins (5).
      */
-    public static int getDistanceBinSize() {return 5;}
+    public static int getDistanceBinSize() {return 6;}
 
     /**
      * Returns the total number of traffic analysis zones segmented from the network.
@@ -290,16 +289,18 @@ public class StateEngine{
     public static int descritizeDistanceFromContinuous(double distanceInMeters) {
         double distanceInKm = distanceInMeters / 1000.0;
 
-        if (distanceInKm <= 1.0) {
-            return 0; // 0 - 1 km
-        } else if (distanceInKm <= 2.0) {
-            return 1; // 1 - 2 km
+        if (distanceInKm <= 0.5) {
+            return 0; // 0 - 0.5 km
+        } else if (distanceInKm <= 1.2) {
+            return 1; // 0.5 - 1.2 km
+        } else if (distanceInKm <= 2.5) {
+            return 2; // 1.5 - 25 km
         } else if (distanceInKm <= 5.0) {
-            return 2; // 2 - 5 km
-        } else if (distanceInKm <= 10.0) {
-            return 3; // 5 - 10 km
+            return 3; // 2.5 - 5 km
+        }else if (distanceInKm <= 8.0) {
+            return 4; // 5 - 8 km
         } else {
-            return 4; // 10+ km
+            return 5; // 8+ km
         }
     }
 

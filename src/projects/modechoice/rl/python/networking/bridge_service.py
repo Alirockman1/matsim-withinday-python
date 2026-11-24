@@ -50,7 +50,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
         """
         with self._lock:
             agent = self._get_or_create_agent(agent_tag)
-            state = prepare_state(agent_tag, observation, self.trip_memory, True)
+            state = prepare_state(agent_tag, observation, self.trip_memory, False)
 
             if not agent.terminal and dataset != "test":
                 agent.init_state(state)
@@ -112,7 +112,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
                     previous_action, 
                     latest_reward, 
                     next_state, 
-                    print_tabel=True
+                    print_tabel=False
                 )
 
             delta_q = float(getattr(agent, "delta_q", -999))
@@ -126,7 +126,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
             if hasattr(self, "trip_memory"):
                 self.trip_memory.clear()
             
-            Agent.increment_simulation_iteration
+            Agent.increment_simulation_iteration()
 
             for agent_ID , agent in self.agents.items():
                 agent.terminal = False

@@ -6,9 +6,11 @@ from modechoice.rl.python.core.Memory import Memory
 
 class DecentralizedQLearningAgent:
     RANDOM_SEED = 42
+    TIE_ORDER = {"bike": 0, "pt": 1, "pedestrian": 2, "car": 3}
 
     _config = {}
     _alpha = 0.1
+    _alpha_min = 0.01
     _gamma = 0.9
     _initial_epsilon = 1.0
     _epsilon_min = 0.01
@@ -38,6 +40,9 @@ class DecentralizedQLearningAgent:
         cls._output_directory = str(config_args.get("outputDirectory"))
         cls._checkpoint_model = str(config_args.get("checkpointModel"))
         cls._simulation_iteration = 0
+        cls._random_seed = int(config_args.get("randomSeed", cls.RANDOM_SEED))
+
+        print(cls._random_seed)
         
         # Parse available modes globally
         mode_string = config_args.get("modes", "")
@@ -46,11 +51,11 @@ class DecentralizedQLearningAgent:
         else:
             cls._modes = list(mode_string)
 
-        random.seed(cls.RANDOM_SEED)
+        random.seed(cls._random_seed)
 
     @classmethod
     def increment_simulation_iteration(cls):
-        cls._simulation_iteration =+ 1
+        cls._simulation_iteration += 1
 
     @classmethod
     def get_epsilon(cls):
@@ -113,6 +118,26 @@ class DecentralizedQLearningAgent:
     def state_coverage(self):
         return self._memory.get_data()
 
+    def _greedy(self, state, available_modes):
+        q = self._q_table[state]
+        return max(
+            available_modes,
+            key=lambda m: (q[m],                                         # 1. highest Q
+                        self._memory.get_action_count(state, m),         # 2. most-tried action
+                        -self.TIE_ORDER.get(m, len(self.TIE_ORDER))),    # 3. fixed priority
+        )
+
+    def get_alpha(self, state, action):
+        ''' Learning rate from n(s,a) and n(s,a)/n(s), with the Q init counted as a prior. '''
+        n_sa = max(1, self._memory.get_action_count(state, action))
+        n_s = max(n_sa, sum(self._memory.get_action_count(state, m) for m in self._modes))
+
+        n_eff = n_sa * n_sa / n_s                 # samples discounted by staleness
+        prior = 1.0 / self._alpha - 1.0           # pseudo-samples carried by the init value
+        alpha = 1.0 / (n_eff + prior)
+
+        return min(self._alpha, max(self._alpha_min, alpha))
+
     def summary(self, include_states=True, include_q_table=False):
         """
         Summarize this agent for monitoring (plain, JSON-safe values only).
@@ -153,9 +178,7 @@ class DecentralizedQLearningAgent:
             chosen_action = random.choice(available_modes)
         # Exploitation
         else:
-            agent_policy = self._q_table[state]
-            filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
-            chosen_action = max(filtered_policy, key=filtered_policy.get)
+            chosen_action = self._greedy(state, available_modes)
 
         self._memory.record_action(state, chosen_action)
         return chosen_action
@@ -165,9 +188,7 @@ class DecentralizedQLearningAgent:
 	    Return default pedestrain mode if the state doesnt exist '''
 
         try:
-            agent_policy = self._q_table[state]
-            filtered_policy = {mode: agent_policy[mode] for mode in available_modes}
-            return max(filtered_policy, key=filtered_policy.get)
+            return self._greedy(state, available_modes)
         except (KeyError, TypeError):
             return "pedestrian"
 
@@ -176,7 +197,7 @@ class DecentralizedQLearningAgent:
         The Bellman Equation Update for this agent.
         "Q(s, a) = Q(s, a) + alpha * [reward + gamma * max(Q(s', a')) - Q(s, a)]" '''
 
-        if self._simulation_iteration >= self.max_training_iteration:
+        if self._current_iteration >= self.max_training_iteration:
             return
         
         current_q_value = self._q_table[state][action]
@@ -190,7 +211,8 @@ class DecentralizedQLearningAgent:
             target = reward + self._gamma * future_reward_value
 
         # Update Rule: Q(s,a) = Q(s,a) + alpha * [Reward + gamma * MaxQ(s') - Q(s,a)]
-        self._q_table[state][action] += self._alpha * (target - current_q_value)
+        alpha = self.get_alpha(state, action)
+        self._q_table[state][action] += alpha * (target - current_q_value)
         new_q_value = self._q_table[state][action]
 
         # Incremental change in q value
@@ -284,7 +306,7 @@ class DecentralizedQLearningAgent:
     def dump(self, iteration):
         """Save or update the shared Q-table checkpoint."""
 
-        if iteration > self.max_training_iteration:
+        if (iteration +self._previous_iteration) > self.max_training_iteration: # Test phase
             save_directory = self._output_directory
         else:
             save_directory = os.path.join(self._output_directory, "ITERS", f"it.{iteration}")
