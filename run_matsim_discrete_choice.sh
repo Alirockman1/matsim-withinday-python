@@ -1,32 +1,32 @@
 #!/bin/bash
 
-echo "### JOB STARTED - RANDOM MODE CHOICE: ###"
+echo "### JOB START - Discrete Choice Model ###"
 
 # ==============================================================================
 # 1. VARIABLES
 # ==============================================================================
 # Simulation Parameters
-SIMULATION_TYPE="local_policy"
+SIMULATION_TYPE="single_agent"
 SCENARIO_NAME="sioux_falls"
 OBJECTIVE="single"
-CONFIG_NAME="synthetic/config.xml"
+CONFIG_NAME="config.xml"
 NUM_AGENTS_PER_ITERATION="1"
 
-MATSIM_ITERATION="700"
+MATSIM_ITERATION="800"
 NUM_THREADS="4"
 MEMORY="12g"
 SEED_NUMBER="999"
 
 # Custom Project Parameters
-RUN_SCRIPT="/app/src/projects/modechoice/random/python/core/run_random_mode_choice.py"
-OBSERVER_CLASS="RandomModeChoiceObserver"
-REPLANNER_CLASS="RandomModeChoiceReplanner"
+RUN_SCRIPT="/app/src/projects/modechoice/discrete_choice/python/core/run_discrete_mode_choice.py"
+OBSERVER_CLASS="DiscreteModeChoiceObserver"
+REPLANNER_CLASS="DiscreteModeChoiceReplanner"
 DOCKER_IMAGE_NAME="matsim-rl:development"
 
 # Local directories based on current working directory ($PWD)
 BASE_WORKSPACE="$PWD"
 INPUT_DIRECTORY="${BASE_WORKSPACE}/scenarios/${SCENARIO_NAME}/input"
-OUTPUT_DIRECTORY="${BASE_WORKSPACE}/scenarios/${SCENARIO_NAME}/output/project/random_choice"
+OUTPUT_DIRECTORY="${BASE_WORKSPACE}/scenarios/${SCENARIO_NAME}/output/project/discrete_choice"
 SHARED_DIRECTORY="${BASE_WORKSPACE}/scenarios/${SCENARIO_NAME}/shared_storage"
 
 # Ensure local directories exist
@@ -60,6 +60,7 @@ else
         echo "### Local jar is already up to date. ###"
         rm -f "$TEMP_JAR"
     fi
+fi
 
 # ==============================================================================
 # 3. BUILD DOCKER IMAGE LOCALLY
@@ -68,7 +69,7 @@ echo "### Building Docker image locally from Dockerfile.txt... ###"
 docker build -f Dockerfile.txt -t "$DOCKER_IMAGE_NAME" . || { echo "### Docker build failed ###"; exit 1; }
 
 # ==============================================================================
-# 7. RUN MATSIM
+# 4. RUN MATSIM
 # ==============================================================================
 echo "### Launching MATSim in the container ###"
 

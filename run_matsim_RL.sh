@@ -62,6 +62,7 @@ else
         echo "### Local jar is already up to date. ###"
         rm -f "$TEMP_JAR"
     fi
+fi
 
 # ==============================================================================
 # 3. BUILD DOCKER IMAGE LOCALLY
