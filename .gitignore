@@ -16,6 +16,7 @@ test/output/
 *.jar
 *.war
 *.ear
+*.gif
 dependency-reduced-pom.xml
 
 # IDEs & System Files
