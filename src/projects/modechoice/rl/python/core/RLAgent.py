@@ -4,9 +4,17 @@ import os
 
 from modechoice.rl.python.core.Memory import Memory
 
+
 class DecentralizedQLearningAgent:
     RANDOM_SEED = 42
-    TIE_ORDER = {"bike": 0, "pt": 1, "pedestrian": 2, "car": 3}
+    _CHECKPOINT_PARAMS = {
+        "alpha": ("_alpha", float),
+        "gamma": ("_gamma", float),
+        "epsilon": ("_initial_epsilon", float),
+        "epsilonMinimum": ("_epsilon_min", float),
+        "epsilonDecay": ("_epsilon_decay", float),
+        "tieTolerance": ("_tie_tolerance", float),
+    }
 
     _config = {}
     _alpha = 0.1
@@ -15,19 +23,22 @@ class DecentralizedQLearningAgent:
     _initial_epsilon = 1.0
     _epsilon_min = 0.01
     _epsilon_decay = 0.99
+    _tie_tolerance = 1.0          # Q-values within this many reward units of the best count as tied
     _output_directory = ""
     _file_path = ""
     _simulation_iteration = 0
+    _random_seed = RANDOM_SEED
     max_training_iteration = 100
     _modes = []
     _checkpoint_model = ""
-    
+
     @classmethod
     def configure_global_parameters(cls, config_args: dict):
         """
-        Dynamically configures class-level shared parameters from any arbitrary dictionary 
+        Dynamically configures class-level shared parameters from any arbitrary dictionary
         passed by MATSim/Java, without needing to know every key ahead of time.
         """
+        config_args = config_args or {}
         cls._config = config_args or cls._config
 
         # Extract known parameters safely with default fallbacks
@@ -36,14 +47,15 @@ class DecentralizedQLearningAgent:
         cls._initial_epsilon = float(config_args.get("epsilon", cls._initial_epsilon))
         cls._epsilon_min = float(config_args.get("epsilonMinimum", cls._epsilon_min))
         cls._epsilon_decay = float(config_args.get("epsilonDecay", cls._epsilon_decay))
+        cls._tie_tolerance = float(config_args.get("tieTolerance", cls._tie_tolerance))
         cls.max_training_iteration = int(config_args.get("trainingCutoffIteration", cls.max_training_iteration))
-        cls._output_directory = str(config_args.get("outputDirectory"))
-        cls._checkpoint_model = str(config_args.get("checkpointModel"))
+        cls._output_directory = str(config_args.get("outputDirectory", cls._output_directory))
+        cls._checkpoint_model = str(config_args.get("checkpointModel", cls._checkpoint_model))
         cls._simulation_iteration = 0
         cls._random_seed = int(config_args.get("randomSeed", cls.RANDOM_SEED))
 
-        print(cls._random_seed)
-        
+        print(f"PYTHON SERVICE: random seed = {cls._random_seed}")
+
         # Parse available modes globally
         mode_string = config_args.get("modes", "")
         if isinstance(mode_string, str):
@@ -54,16 +66,40 @@ class DecentralizedQLearningAgent:
         random.seed(cls._random_seed)
 
     @classmethod
+    def apply_checkpoint_parameters(cls, saved_config: dict):
+        """
+        Adopt the learning parameters (and the modes) a loaded Q-table was trained with, so the policy is
+        used / continued under the parameters that produced it. Only the keys in _CHECKPOINT_PARAMS and
+        the modes are taken from the checkpoint; run-specific settings stay as configured for this run.
+        Idempotent and side-effect free otherwise: it neither re-seeds the RNG nor resets iteration counters.
+        """
+        saved_config = saved_config or {}
+        applied = {}
+
+        for key, (attr, cast) in cls._CHECKPOINT_PARAMS.items():
+            if key not in saved_config:
+                continue  # e.g. older checkpoints without tieTolerance: keep the current value
+            value = cast(saved_config[key])
+            if getattr(cls, attr) != value:
+                print(f"PYTHON SERVICE: {key}: {getattr(cls, attr)} -> {value} (from checkpoint)")
+            setattr(cls, attr, value)
+            applied[key] = saved_config[key]
+
+        if "modes" in saved_config:
+            mode_value = saved_config["modes"]
+            modes = ([m.strip() for m in mode_value.split(",") if m.strip()]
+                     if isinstance(mode_value, str) else list(mode_value))
+            if modes != cls._modes:
+                print(f"PYTHON SERVICE: modes: {cls._modes} -> {modes} (from checkpoint)")
+            cls._modes = modes
+            applied["modes"] = saved_config["modes"]
+
+        # keep the config that gets written into the next checkpoint consistent with what is in effect
+        cls._config = {**cls._config, **applied}
+
+    @classmethod
     def increment_simulation_iteration(cls):
         cls._simulation_iteration += 1
-
-    @classmethod
-    def get_epsilon(cls):
-        return cls._epsilon
-
-    @classmethod
-    def set_epsilon(cls, value):
-        cls._epsilon = float(value)
 
     @classmethod
     def get_file_path(cls):
@@ -77,8 +113,7 @@ class DecentralizedQLearningAgent:
     def get_modes(cls):
         return cls._modes
 
-
-    def __init__(self, unique_id, args={}):
+    def __init__(self, unique_id, args=None):
         """Initializes a unique instance for a specific ID."""
         self._id = unique_id
         self._q_table = {}
@@ -89,10 +124,16 @@ class DecentralizedQLearningAgent:
         self._previous_iteration = 0
         self._memory = Memory()
 
-        for key, value in args.items():
+        for key, value in (args or {}).items():
             setattr(self, key, value)
 
         self._load_data_on_startup()
+
+    def get_epsilon(self):
+        return self._epsilon
+
+    def set_epsilon(self, value):
+        self._epsilon = float(value)
 
     @property
     def q_table(self):
@@ -101,11 +142,11 @@ class DecentralizedQLearningAgent:
     @property
     def id(self):
         return self._id
-    
+
     @property
     def delta_q(self):
         return self._delta_q
-    
+
     @property
     def terminal(self):
         return self._terminal
@@ -118,13 +159,31 @@ class DecentralizedQLearningAgent:
     def state_coverage(self):
         return self._memory.get_data()
 
-    def _greedy(self, state, available_modes):
+    def _greedy(self, state, available_modes, break_ties_randomly=False):
+        """
+        Greedy action with tolerance-based tie handling.
+
+        All modes whose Q-value is within `_tie_tolerance` of the best are treated as tied.
+          - training:   pick uniformly among the tied modes with the seeded RNG, so new states are not
+                        always explored in the same fixed order and the seed actually matters.
+          - evaluation: deterministic: most-tried action first, then highest Q, then the order of the
+                        `modes` list from the config (nothing is hard-coded).
+        """
         q = self._q_table[state]
+        modes = sorted(available_modes)  # sorted: independent of set/hash ordering -> reproducible
+        best = max(q[m] for m in modes)
+        tied = [m for m in modes if best - q[m] <= self._tie_tolerance]
+
+        if len(tied) == 1:
+            return tied[0]
+        if break_ties_randomly:
+            return random.choice(tied)
+        order = {m: i for i, m in enumerate(self._modes)}
         return max(
-            available_modes,
-            key=lambda m: (q[m],                                         # 1. highest Q
-                        self._memory.get_action_count(state, m),         # 2. most-tried action
-                        -self.TIE_ORDER.get(m, len(self.TIE_ORDER))),    # 3. fixed priority
+            tied,
+            key=lambda m: (self._memory.get_action_count(state, m),   # 1. most-tried action
+                           q[m],                                      # 2. highest Q
+                           -order.get(m, len(order))),                # 3. position in the configured modes
         )
 
     def get_alpha(self, state, action):
@@ -141,7 +200,7 @@ class DecentralizedQLearningAgent:
     def summary(self, include_states=True, include_q_table=False):
         """
         Summarize this agent for monitoring (plain, JSON-safe values only).
- 
+
         :param include_states:  also include the per-state visit / action counts (can be large).
         :param include_q_table: also include this agent's full Q-table (can be very large).
         """
@@ -156,12 +215,12 @@ class DecentralizedQLearningAgent:
         if include_q_table:
             data["q_table"] = {str(state): dict(q_values) for state, q_values in self._q_table.items()}
         return data
-    
+
     def init_state(self, state_tuple):
         ''' Initializes the state and action pair in this agent's Q-table. '''
 
         if state_tuple not in self._q_table:
-            # Initialize all possible modes
+            # Initialize all possible modes (optimistic initial value)
             self._q_table[state_tuple] = {mode: 600.0 for mode in self._modes}
 
         self._memory.record_state(state_tuple, self._modes)
@@ -169,41 +228,44 @@ class DecentralizedQLearningAgent:
     def decay_epsilon(self, iteration):
         ''' Updates the epsilon value for the current iteration. '''
         self._current_iteration = iteration + self._previous_iteration
-        self._epsilon = max(self._epsilon_min, self._initial_epsilon * (self._epsilon_decay ** self._current_iteration))
-        
+        self._epsilon = max(self._epsilon_min,
+                            self._initial_epsilon * (self._epsilon_decay ** self._current_iteration))
+
     def choose_action_train(self, state, available_modes):
-        ''' Epsilon-Greedy selection for mode choices for this specific agent. ''' 
+        ''' Epsilon-Greedy selection for mode choices for this specific agent. '''
+        training = self._current_iteration < self.max_training_iteration
+
         # Exploration (Random)
-        if random.random() < self._epsilon and self._current_iteration < self.max_training_iteration:
+        if training and random.random() < self._epsilon:
             chosen_action = random.choice(available_modes)
-        # Exploitation
+        # Exploitation (random tie-breaking only while training)
         else:
-            chosen_action = self._greedy(state, available_modes)
+            chosen_action = self._greedy(state, available_modes, break_ties_randomly=training)
 
         self._memory.record_action(state, chosen_action)
         return chosen_action
 
     def choose_action_evaluation(self, state, available_modes):
-        ''' Evaluate the saved policy in the q_table.
-	    Return default pedestrain mode if the state doesnt exist '''
+        ''' Evaluate the saved policy in the q_table (deterministic).
+            Return default pedestrian mode if the state doesn't exist. '''
 
         try:
-            return self._greedy(state, available_modes)
+            return self._greedy(state, available_modes, break_ties_randomly=False)
         except (KeyError, TypeError):
             return "pedestrian"
 
     def update_policy(self, state, action, reward, next_state=None, print_tabel=False):
-        ''' 
+        '''
         The Bellman Equation Update for this agent.
         "Q(s, a) = Q(s, a) + alpha * [reward + gamma * max(Q(s', a')) - Q(s, a)]" '''
 
         if self._current_iteration >= self.max_training_iteration:
             return
-        
+
         current_q_value = self._q_table[state][action]
 
         if next_state is None:
-            target = reward # No furture update required
+            target = reward  # No future update required
         # Get Max Q(s', a') for the next state
         else:
             future_reward_value = max(self._q_table[next_state].values())
@@ -211,13 +273,12 @@ class DecentralizedQLearningAgent:
             target = reward + self._gamma * future_reward_value
 
         # Update Rule: Q(s,a) = Q(s,a) + alpha * [Reward + gamma * MaxQ(s') - Q(s,a)]
-        alpha = self.get_alpha(state, action)
-        self._q_table[state][action] += alpha * (target - current_q_value)
+        #alpha = self.get_alpha(state, action)
+        self._q_table[state][action] += self._alpha * (target - current_q_value)
         new_q_value = self._q_table[state][action]
 
         # Incremental change in q value
-        old_q_value = current_q_value
-        self._delta_q = abs(new_q_value - old_q_value)
+        self._delta_q = abs(new_q_value - current_q_value)
 
         if print_tabel:
             self.print_q_table()
@@ -230,7 +291,7 @@ class DecentralizedQLearningAgent:
         print(f"{'PERSONAL Q-TABLE (20-BIT VECTOR VIEW): ' + str(self._id):^{width}}")
         print(f"{'=' * width}")
 
-        # Optimized header matching the exact 20-bit feature set
+        # Header matching the exact 20-bit feature set
         header = (f"{'CUR ZONE':<10} | {'TGT ZONE':<10} | "
                   f"{'DEP BIN':<8} | {'DISTANCE':<12} | {'ASSET':<14} | {'CONGESTION':<12} || "
                   f"{'CAR':<7} | {'PT':<7} | {'BIKE':<7} | {'WALK':<7}")
@@ -250,42 +311,41 @@ class DecentralizedQLearningAgent:
                 print("." * width)
                 continue
 
-            # 1. Unpack bits according to the exact 20-bit breakdown:
-            print(state_bits_string)
+            # 1. Unpack bits according to the exact 20-bit breakdown
             curr_zone_bits = "".join(state_bits_string[0:4])
-            tgt_zone_bits  = "".join(state_bits_string[4:8])
-            time_bits      = "".join(state_bits_string[8:13])
-            dist_bits      = "".join(state_bits_string[13:16])
-            asset_bits     = "".join(state_bits_string[16:18])
-            cong_bits      = "".join(state_bits_string[18:20])
+            tgt_zone_bits = "".join(state_bits_string[4:8])
+            time_bits = "".join(state_bits_string[8:13])
+            dist_bits = "".join(state_bits_string[13:16])
+            asset_bits = "".join(state_bits_string[16:18])
+            cong_bits = "".join(state_bits_string[18:20])
 
             # 2. Decode Values & Labels
             curr_zone = int(curr_zone_bits, 2)
-            tgt_zone  = int(tgt_zone_bits, 2)
-            tau_val   = int(time_bits, 2)
-            
-            dist_idx   = int(dist_bits, 2)
+            tgt_zone = int(tgt_zone_bits, 2)
+            tau_val = int(time_bits, 2)
+
+            dist_idx = int(dist_bits, 2)
             dist_label = {
-                0: "0-1 km", 
-                1: "1-2 km", 
-                2: "2-5 km", 
+                0: "0-1 km",
+                1: "1-2 km",
+                2: "2-5 km",
                 3: "5-10 km",
                 4: "10+ km"
             }.get(dist_idx, "UNKNOWN")
 
-            asset_idx   = int(asset_bits, 2)
+            asset_idx = int(asset_bits, 2)
             asset_label = {
-                0: "NONE", 
-                1: "CAR ONLY", 
-                2: "BIKE ONLY", 
+                0: "NONE",
+                1: "CAR ONLY",
+                2: "BIKE ONLY",
                 3: "CAR + BIKE"
             }.get(asset_idx, "UNKNOWN")
-            
-            cong_idx   = int(cong_bits, 2)
+
+            cong_idx = int(cong_bits, 2)
             cong_label = {
-                0: "FREE", 
-                1: "SLOW", 
-                2: "MILD", 
+                0: "FREE",
+                1: "SLOW",
+                2: "MILD",
                 3: "HEAVY"
             }.get(cong_idx, "UNKNOWN")
 
@@ -297,7 +357,7 @@ class DecentralizedQLearningAgent:
                    f"{actions.get('bike', 0.0):>7.2f} | "
                    f"{actions.get('pedestrian', 0.0):>7.2f}")
             print(row)
-            
+
             # Section break between states
             print("." * width)
 
@@ -306,7 +366,7 @@ class DecentralizedQLearningAgent:
     def dump(self, iteration):
         """Save or update the shared Q-table checkpoint."""
 
-        if (iteration +self._previous_iteration) > self.max_training_iteration: # Test phase
+        if (iteration + self._previous_iteration) > self.max_training_iteration:  # Test phase
             save_directory = self._output_directory
         else:
             save_directory = os.path.join(self._output_directory, "ITERS", f"it.{iteration}")
@@ -361,12 +421,19 @@ class DecentralizedQLearningAgent:
             with open(load_file_path, "rb") as f:
                 saved_data = pickle.load(f)
 
-            self._previous_iteration = saved_data["iteration"]
-            self.configure_global_parameters(saved_data["config_arg"])
             q_tables = saved_data.get("q_tables", {})
             memories = saved_data.get("memories", {})
 
-            self._parse_loaded_data_for_agent(q_tables, memories)
+            if not self._parse_loaded_data_for_agent(q_tables, memories):
+                return False  # fresh start: the iteration offset stays 0
+
+            # Iterations already explored by this Q-table; added to the current iteration in decay_epsilon()
+            self._previous_iteration = saved_data["iteration"]
+
+            # The Q-table is only meaningful under the parameters it was learned with: adopt them.
+            self.apply_checkpoint_parameters(saved_data.get("config_arg", {}))
+            self._epsilon = max(self._epsilon_min,
+                                self._initial_epsilon * (self._epsilon_decay ** self._previous_iteration))
 
             print(f"PYTHON SERVICE: Loaded tables for {self._id}")
             self.print_q_table()
@@ -382,6 +449,10 @@ class DecentralizedQLearningAgent:
         q_table = q_tables.get(self._id) or q_tables.get(str(self._id))
         memory = memories.get(self._id) or memories.get(str(self._id))
 
+        if not q_table:
+            print(f"PYTHON SERVICE: No saved Q-table for agent {self._id}. Starting fresh.")
+            return False
+
         for state, action_values in q_table.items():
             if not isinstance(action_values, dict):
                 print(f"PYTHON SERVICE: Skipping invalid state {state!r}.")
@@ -391,6 +462,8 @@ class DecentralizedQLearningAgent:
 
             for action, q_value in action_values.items():
                 self._q_table[state][action] = q_value
-        
+
         if memory:
             self._memory.load_data(memory)
+
+        return True

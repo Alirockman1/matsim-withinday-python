@@ -50,7 +50,7 @@ class ReinforcementLearningBridgeService(BaseSimulationBridgeService):
         """
         with self._lock:
             agent = self._get_or_create_agent(agent_tag)
-            state = prepare_state(agent_tag, observation, self.trip_memory, False)
+            state = prepare_state(agent_tag, observation, self.trip_memory, True)
 
             if not agent.terminal and dataset != "test":
                 agent.init_state(state)

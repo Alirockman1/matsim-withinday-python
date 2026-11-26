@@ -167,7 +167,7 @@ public class AgentSelector {
                 if (agentIdStr == null || agentIdStr.isBlank()) continue;
                 Id<Person> id = Id.createPersonId(agentIdStr.trim());
                 Person person = scenario.getPopulation().getPersons().get(id);
-                if (person != null && isEligiblePerson(person)) {
+                if (person != null) {
                     candidatePool.add(person);
                 } else {
                     log.warn("AgentSelector: Explicit train agent ID '{}' not found in population.", agentIdStr);
@@ -343,7 +343,7 @@ public class AgentSelector {
         selectedAgents.clear();
 
         List<Id<Person>> poolList = new ArrayList<>(simulationAgentSubspace);
-        long dynamicSeed = System.currentTimeMillis() + (iteration * 31L) + this.randomSeed;
+        long dynamicSeed = (iteration * 31L) + this.randomSeed;
         Random iterationRandom = new Random(dynamicSeed);
         Collections.shuffle(poolList, iterationRandom);
 

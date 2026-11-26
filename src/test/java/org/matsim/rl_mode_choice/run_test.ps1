@@ -1,25 +1,25 @@
 # --- PARAMETERS (Change these as needed to test your setup) ---
 $RUN_SCRIPT = "/app/src/projects/modechoice/rl/python/core/run_rl_pipeline.py"
-$CONFIG_NAME = "synthetic/config.xml"
+$CONFIG_NAME = "config.xml"
 $OBSERVER_CLASS = "CustomRLObserver"
 $REPLANNER_CLASS = "CustomRLReplanner"
 $SCENARIO_NAME = "sioux_falls"
 $OBJECTIVE = "single"#"multi_agent" 
 
-$MATSIM_ITERATION = "3001"
-$MAX_TRAINING_ITERATION = "3000"
+$MATSIM_ITERATION = "700"
+$MAX_TRAINING_ITERATION = "690"
 $NUM_THREADS = "1"
 $MEMORY = "12g"
 
 #$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=2.59894 w_2=3.405791"
-$PARAMS = "alpha=0.367435 gamma=0.892101 epsilon_minimum=0.001044 epsilon_decay=0.966574 w_1=1.0 w_2=1.0 filter_zone_count=5 train_percentage=0.2"
-$SEED_NUMBER = "999"
+$PARAMS = "alpha=0.3 gamma=0.892101 epsilon_minimum=0.01 epsilon_decay=0.98 w_1=1.0 w_2=1.0 filter_zone_count=5 train_percentage=0.2"
+$SEED_NUMBER = "42"
 $INTERNAL_PORT = "5099"
 
 # Development Pipeline Toggles
 $NUM_AGENTS_PER_ITERATION = "1"
 $UPDATE_JAR = $false
-$REBUILT_DOCKER = $false
+$REBUILT_DOCKER = $true
 
 # Base Windows workspace directory 
 $CurrentDir = $PSScriptRoot

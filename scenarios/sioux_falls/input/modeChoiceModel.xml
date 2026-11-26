@@ -5,7 +5,7 @@
     <module name="agentModeChoice">
         <param name="modelType" value="QLearning" />
         <param name="loadCheckpoint" value="" />
-        <param name="TAZFileName" value="synthetic/sioux_falls_taz.shp" />
+        <param name="TAZFileName" value="sioux_falls_taz.shp" />
         <param name="autoEncoderModel" value="" />
         <param name="saveInterval" value="1" /> 
         <param name="validationInterval" value="100" /> 
